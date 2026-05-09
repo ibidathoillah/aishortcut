@@ -29,7 +29,8 @@ CHAT_ID="${3:-}"
 
 # --- Prerequisites Check ---
 if [ "$EUID" -ne 0 ]; then
-  error "Please run this script as root (e.g., using sudo)."
+  warn "This script usually requires root privileges to install services and write to /opt."
+  warn "Continuing without root... some steps might fail."
 fi
 
 echo -e "\n${BOLD}${GREEN}============================================${NC}"
