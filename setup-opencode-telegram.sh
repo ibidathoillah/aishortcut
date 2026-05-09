@@ -27,10 +27,12 @@ BOT_TOKEN="${1:-}"
 PORT="${2:-4096}"
 CHAT_ID="${3:-}"
 
+# --- Permission Helper ---
+is_root() { [ "$EUID" -eq 0 ]; }
+
 # --- Prerequisites Check ---
-if [ "$EUID" -ne 0 ]; then
-  warn "This script usually requires root privileges to install services and write to /opt."
-  warn "Continuing without root... some steps might fail."
+if ! is_root; then
+  warn "Not running as root. Some system-level steps (services, /opt) will be skipped."
 fi
 
 echo -e "\n${BOLD}${GREEN}============================================${NC}"
@@ -50,44 +52,62 @@ fi
 step "Installing OpenCode..."
 if ! command -v opencode &>/dev/null; then
   substep "Downloading and installing..."
-  curl -fsSL https://opencode.ai/install | bash > /dev/null 2>&1
+  curl -fsSL https://opencode.ai/install | bash > /dev/null 2>&1 || true
   export PATH="$HOME/.opencode/bin:$PATH"
 fi
-success "OpenCode installed: $(opencode --version)"
+if command -v opencode &>/dev/null; then
+  success "OpenCode installed: $(opencode --version)"
+else
+  warn "OpenCode installation failed or skipped."
+fi
 
 # --- Install Bun ---
 step "Installing Bun..."
 if ! command -v bun &>/dev/null; then
   substep "Downloading and installing..."
-  curl -fsSL https://bun.sh/install | bash > /dev/null 2>&1
+  curl -fsSL https://bun.sh/install | bash > /dev/null 2>&1 || true
 fi
 export PATH="$HOME/.bun/bin:$PATH"
-success "Bun installed: $(bun --version)"
+if command -v bun &>/dev/null; then
+  success "Bun installed: $(bun --version)"
+else
+  warn "Bun installation failed or skipped."
+fi
 
 # --- Setup Telegram Bot Repo ---
-INSTALL_DIR="/opt/opencode-telegram-bot"
+if is_root; then
+    INSTALL_DIR="/opt/opencode-telegram-bot"
+else
+    INSTALL_DIR="$HOME/opencode-telegram-bot"
+fi
+
 step "Setting up Telegram bot repository..."
 if [ -d "$INSTALL_DIR" ]; then
-  substep "Directory exists. Pulling latest changes..."
+  substep "Directory exists ($INSTALL_DIR). Pulling latest changes..."
   cd "$INSTALL_DIR"
   git pull > /dev/null 2>&1 || true
 else
   substep "Cloning repository to $INSTALL_DIR..."
-  git clone https://github.com/grinev/opencode-telegram-bot.git "$INSTALL_DIR" > /dev/null 2>&1
-  cd "$INSTALL_DIR"
+  git clone https://github.com/grinev/opencode-telegram-bot.git "$INSTALL_DIR" > /dev/null 2>&1 || true
+  cd "$INSTALL_DIR" || error "Could not enter directory $INSTALL_DIR"
 fi
-success "Repository ready."
+success "Repository ready at $INSTALL_DIR"
 
 # --- Install Dependencies ---
 step "Installing project dependencies..."
-substep "Running bun install & build..."
-bun install --ignore-scripts > /dev/null 2>&1
-bun run build > /dev/null 2>&1
-success "Dependencies installed."
+if command -v bun &>/dev/null; then
+    substep "Running bun install & build..."
+    bun install --ignore-scripts > /dev/null 2>&1 || true
+    bun run build > /dev/null 2>&1 || true
+    success "Dependencies installed."
+else
+    warn "Skipping dependencies because Bun is not available."
+fi
 
 # --- Systemd for OpenCode Server ---
 step "Configuring OpenCode Server Service..."
-cat > /etc/systemd/system/opencode-server.service <<UNIT
+if is_root; then
+    cat > /etc/systemd/system/opencode-server.service <<UNIT
 [Unit]
 Description=OpenCode Server
 After=network.target
@@ -103,12 +123,16 @@ RestartSec=5
 WantedBy=multi-user.target
 UNIT
 
-systemctl daemon-reload
-systemctl enable opencode-server > /dev/null 2>&1
-systemctl start opencode-server
-success "OpenCode server service configured and started."
-substep "Waiting for server to initialize..."
-sleep 5
+    systemctl daemon-reload
+    systemctl enable opencode-server > /dev/null 2>&1 || true
+    systemctl start opencode-server || true
+    success "OpenCode server service configured."
+    substep "Waiting for server to initialize..."
+    sleep 5
+else
+    warn "Skipping systemd service creation (requires root)."
+    info "You can start the server manually with: opencode serve --port $PORT"
+fi
 
 # --- Chat ID Detection ---
 step "Configuring Telegram Chat ID..."
@@ -135,7 +159,7 @@ else
 fi
 
 if [ -z "$CHAT_ID" ]; then
-  error "No message detected. Please message your bot and re-run the script."
+  warn "No message detected. You will need to manually update your .env file later."
 fi
 
 # --- Environment File ---
@@ -153,7 +177,8 @@ success ".env file generated."
 
 # --- Systemd for Telegram Bot ---
 step "Configuring Telegram Bot Service..."
-cat > /etc/systemd/system/opencode-telegram.service <<UNIT
+if is_root; then
+    cat > /etc/systemd/system/opencode-telegram.service <<UNIT
 [Unit]
 Description=OpenCode Telegram Bot
 After=network.target opencode-server.service
@@ -176,20 +201,25 @@ Environment=OPENCODE_MODEL_ID=big-pickle
 WantedBy=multi-user.target
 UNIT
 
-systemctl daemon-reload
-systemctl enable opencode-telegram > /dev/null 2>&1
-systemctl start opencode-telegram
-success "Telegram bot service configured and started."
+    systemctl daemon-reload
+    systemctl enable opencode-telegram > /dev/null 2>&1 || true
+    systemctl start opencode-telegram || true
+    success "Telegram bot service configured."
+else
+    warn "Skipping systemd service creation (requires root)."
+    info "You can start the bot manually with: cd $INSTALL_DIR && bun run start"
+fi
 
 # --- Final Output ---
 echo -e "\n${BOLD}${GREEN}============================================${NC}"
 echo -e "${BOLD}${GREEN}              SETUP COMPLETE!               ${NC}"
 echo -e "${BOLD}${GREEN}============================================${NC}"
-echo -e "  ${CYAN}OpenCode Server${NC} : http://127.0.0.1:$PORT"
-echo -e "  ${CYAN}Telegram Bot${NC}    : Running as a system service"
-echo -e ""
-echo -e "${BOLD}Useful Commands:${NC}"
-echo -e "  ${YELLOW}Check Server Status${NC} : systemctl status opencode-server"
-echo -e "  ${YELLOW}Check Bot Status${NC}    : systemctl status opencode-telegram"
-echo -e "  ${YELLOW}View Bot Logs${NC}       : journalctl -u opencode-telegram -f"
+if is_root; then
+    echo -e "  ${CYAN}OpenCode Server${NC} : http://127.0.0.1:$PORT"
+    echo -e "  ${CYAN}Telegram Bot${NC}    : Running as a system service"
+else
+    echo -e "  ${YELLOW}Notice${NC}: Running in User Mode (Non-Root)"
+    echo -e "  ${CYAN}Run Manually${NC}    : cd $INSTALL_DIR && bun run start"
+fi
+
 echo -e "\nEnjoy your AI assistant!\n"
