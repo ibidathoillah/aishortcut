@@ -8,13 +8,27 @@ A collection of scripts and tools for setting up AI-powered shortcuts and bots.
 
 ## Usage
 
-### One-Liner Installation (Recommended)
-
-This command will download the script and start it. If you don't provide the token in the command, it will ask you for it interactively:
+### Option 1: Standard Installation (Recommended)
 
 ```bash
 wget -qO setup.sh https://raw.githubusercontent.com/ibidathoillah/aishortcut/main/setup-opencode-telegram.sh && sudo bash setup.sh
 ```
+
+### Option 2: For Restricted Terminals (If Option 1 fails)
+
+If you see an error like `sudo: a terminal is required`, switch to the root user first, then run the script:
+
+1. **Become root:**
+   ```bash
+   sudo -i
+   # OR if that fails:
+   su -
+   ```
+
+2. **Run the script:**
+   ```bash
+   wget -qO setup.sh https://raw.githubusercontent.com/ibidathoillah/aishortcut/main/setup-opencode-telegram.sh && bash setup.sh
+   ```
 
 ### Advanced Usage
 
