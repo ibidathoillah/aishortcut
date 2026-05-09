@@ -8,13 +8,15 @@ A collection of scripts and tools for setting up AI-powered shortcuts and bots.
 
 ## Usage
 
-### One-Liner Installation
+### One-Liner Installation (Fastest)
 
-Run this command to clone the repo and start the setup directly:
+Run this command to execute the setup directly from GitHub without cloning the full repository:
 
 ```bash
-git clone https://github.com/ibidathoillah/aishortcut.git && cd aishortcut && sudo chmod +x setup-opencode-telegram.sh && sudo ./setup-opencode-telegram.sh <TELEGRAM_BOT_TOKEN>
+curl -fsSL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main/setup-opencode-telegram.sh | sudo bash -s -- <TELEGRAM_BOT_TOKEN>
 ```
+
+### Manual Repository Clone
 
 ### Manual Setup
 
