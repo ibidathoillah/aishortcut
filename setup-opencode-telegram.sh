@@ -6,54 +6,85 @@ set -e
 # Usage: ./setup-opencode-telegram.sh <BOT_TOKEN> [PORT] [CHAT_ID]
 # ============================================
 
+# --- Colors and Formatting ---
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+BOLD='\033[1m'
+
+info() { echo -e "${CYAN}ℹ${NC} $1"; }
+success() { echo -e "${GREEN}✔${NC} $1"; }
+warn() { echo -e "${YELLOW}⚠${NC} $1"; }
+error() { echo -e "${RED}✖ Error:${NC} $1"; exit 1; }
+step() { echo -e "\n${BLUE}${BOLD}▶ ${1}${NC}"; }
+substep() { echo -e "  ${NC}└─ $1${NC}"; }
+
+# --- Arguments ---
 BOT_TOKEN="${1:-}"
 PORT="${2:-4096}"
 CHAT_ID="${3:-}"
 
+# --- Prerequisites Check ---
 if [ "$EUID" -ne 0 ]; then
-  echo "Error: Please run as root (use sudo)."
-  exit 1
+  error "Please run this script as root (e.g., using sudo)."
 fi
 
 if [ -z "$BOT_TOKEN" ]; then
-  echo "Usage: $0 <TELEGRAM_BOT_TOKEN> [PORT] [CHAT_ID]"
-  echo "  TELEGRAM_BOT_TOKEN : from @BotFather"
-  echo "  PORT               : opencode server port (default: 4096)"
-  echo "  CHAT_ID            : (optional) your Telegram chat ID"
+  echo -e "${BOLD}Usage:${NC} $0 <TELEGRAM_BOT_TOKEN> [PORT] [CHAT_ID]"
+  echo -e "  ${YELLOW}TELEGRAM_BOT_TOKEN${NC} : Required. Get this from @BotFather on Telegram."
+  echo -e "  ${YELLOW}PORT${NC}               : Optional. OpenCode server port (default: 4096)."
+  echo -e "  ${YELLOW}CHAT_ID${NC}            : Optional. Your Telegram chat ID (will auto-detect if omitted)."
   exit 1
 fi
 
-echo "==> Installing OpenCode..."
+echo -e "\n${BOLD}${GREEN}============================================${NC}"
+echo -e "${BOLD}${GREEN}  OpenCode + Telegram Bot Auto-Installer    ${NC}"
+echo -e "${BOLD}${GREEN}============================================${NC}\n"
+
+# --- Install OpenCode ---
+step "Installing OpenCode..."
 if ! command -v opencode &>/dev/null; then
-  curl -fsSL https://opencode.ai/install | bash
+  substep "Downloading and installing..."
+  curl -fsSL https://opencode.ai/install | bash > /dev/null 2>&1
   export PATH="$HOME/.opencode/bin:$PATH"
 fi
-echo "OpenCode: $(opencode --version)"
+success "OpenCode installed: $(opencode --version)"
 
-echo "==> Installing Bun..."
+# --- Install Bun ---
+step "Installing Bun..."
 if ! command -v bun &>/dev/null; then
-  curl -fsSL https://bun.sh/install | bash
+  substep "Downloading and installing..."
+  curl -fsSL https://bun.sh/install | bash > /dev/null 2>&1
 fi
 export PATH="$HOME/.bun/bin:$PATH"
-echo "Bun: $(bun --version)"
+success "Bun installed: $(bun --version)"
 
+# --- Setup Telegram Bot Repo ---
 INSTALL_DIR="/opt/opencode-telegram-bot"
-
-echo "==> Setting up Telegram bot at $INSTALL_DIR..."
+step "Setting up Telegram bot repository..."
 if [ -d "$INSTALL_DIR" ]; then
+  substep "Directory exists. Pulling latest changes..."
   cd "$INSTALL_DIR"
-  git pull 2>/dev/null || true
+  git pull > /dev/null 2>&1 || true
 else
-  git clone https://github.com/grinev/opencode-telegram-bot.git "$INSTALL_DIR"
+  substep "Cloning repository to $INSTALL_DIR..."
+  git clone https://github.com/grinev/opencode-telegram-bot.git "$INSTALL_DIR" > /dev/null 2>&1
   cd "$INSTALL_DIR"
 fi
+success "Repository ready."
 
-echo "==> Installing dependencies..."
-bun install --ignore-scripts 2>/dev/null
-bun run build
+# --- Install Dependencies ---
+step "Installing project dependencies..."
+substep "Running bun install & build..."
+bun install --ignore-scripts > /dev/null 2>&1
+bun run build > /dev/null 2>&1
+success "Dependencies installed."
 
-echo "==> Creating systemd services..."
-
+# --- Systemd for OpenCode Server ---
+step "Configuring OpenCode Server Service..."
 cat > /etc/systemd/system/opencode-server.service <<UNIT
 [Unit]
 Description=OpenCode Server
@@ -70,40 +101,43 @@ RestartSec=5
 WantedBy=multi-user.target
 UNIT
 
-echo "==> Starting OpenCode server..."
 systemctl daemon-reload
-systemctl enable opencode-server
+systemctl enable opencode-server > /dev/null 2>&1
 systemctl start opencode-server
+success "OpenCode server service configured and started."
+substep "Waiting for server to initialize..."
 sleep 5
 
+# --- Chat ID Detection ---
+step "Configuring Telegram Chat ID..."
 if [ -z "$CHAT_ID" ]; then
-  echo ""
-  echo "==> Send a message to your bot on Telegram, then press Enter..."
+  echo -e "\n${BOLD}${CYAN}  Please send a message to your bot on Telegram now.${NC}"
+  echo -e "  Press ${BOLD}Enter${NC} here after you have sent the message..."
   read -r
 
-  echo "==> Detecting your chat ID..."
+  info "Detecting your chat ID..."
   for i in $(seq 1 10); do
     CHAT_ID=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getUpdates" \
       | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
     if [ -n "$CHAT_ID" ]; then
-      echo "Detected Chat ID: $CHAT_ID"
+      success "Detected Chat ID: $CHAT_ID"
       break
     fi
     if [ "$i" -lt 10 ]; then
-      echo "No messages yet, retrying in 3s... ($i/10)"
+      substep "No messages yet, retrying in 3s... ($i/10)"
       sleep 3
     fi
   done
 else
-  echo "==> Using provided Chat ID: $CHAT_ID"
+  info "Using provided Chat ID: $CHAT_ID"
 fi
 
 if [ -z "$CHAT_ID" ]; then
-  echo "Error: No message detected. Message your bot and re-run the script."
-  exit 1
+  error "No message detected. Please message your bot and re-run the script."
 fi
 
-echo "==> Creating .env..."
+# --- Environment File ---
+step "Creating environment configuration..."
 cat > "$INSTALL_DIR/.env" <<EOF
 TELEGRAM_BOT_TOKEN=$BOT_TOKEN
 TELEGRAM_ALLOWED_USER_ID=$CHAT_ID
@@ -113,7 +147,10 @@ OPENCODE_MODEL_PROVIDER=opencode
 OPENCODE_MODEL_ID=big-pickle
 LOG_LEVEL=info
 EOF
+success ".env file generated."
 
+# --- Systemd for Telegram Bot ---
+step "Configuring Telegram Bot Service..."
 cat > /etc/systemd/system/opencode-telegram.service <<UNIT
 [Unit]
 Description=OpenCode Telegram Bot
@@ -137,17 +174,20 @@ Environment=OPENCODE_MODEL_ID=big-pickle
 WantedBy=multi-user.target
 UNIT
 
-echo "==> Starting Telegram bot..."
 systemctl daemon-reload
-systemctl enable opencode-telegram
+systemctl enable opencode-telegram > /dev/null 2>&1
 systemctl start opencode-telegram
+success "Telegram bot service configured and started."
 
-echo ""
-echo "==> Setup complete!"
-echo "    OpenCode server  : http://127.0.0.1:$PORT"
-echo "    Telegram bot     : running as service"
-echo ""
-echo "    Commands:"
-echo "      systemctl status opencode-server"
-echo "      systemctl status opencode-telegram"
-echo "      journalctl -u opencode-telegram -f"
+# --- Final Output ---
+echo -e "\n${BOLD}${GREEN}============================================${NC}"
+echo -e "${BOLD}${GREEN}              SETUP COMPLETE!               ${NC}"
+echo -e "${BOLD}${GREEN}============================================${NC}"
+echo -e "  ${CYAN}OpenCode Server${NC} : http://127.0.0.1:$PORT"
+echo -e "  ${CYAN}Telegram Bot${NC}    : Running as a system service"
+echo -e ""
+echo -e "${BOLD}Useful Commands:${NC}"
+echo -e "  ${YELLOW}Check Server Status${NC} : systemctl status opencode-server"
+echo -e "  ${YELLOW}Check Bot Status${NC}    : systemctl status opencode-telegram"
+echo -e "  ${YELLOW}View Bot Logs${NC}       : journalctl -u opencode-telegram -f"
+echo -e "\nEnjoy your AI assistant!\n"
