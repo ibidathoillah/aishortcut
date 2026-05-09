@@ -32,7 +32,7 @@ is_root() { [ "$EUID" -eq 0 ]; }
 
 # --- Prerequisites Check ---
 if ! is_root; then
-  warn "Not running as root. Some system-level steps (services, /opt) will be skipped."
+  warn "Not running as root. Using User Mode (nohup) instead of systemd."
 fi
 
 echo -e "\n${BOLD}${GREEN}============================================${NC}"
@@ -104,37 +104,7 @@ else
     warn "Skipping dependencies because Bun is not available."
 fi
 
-# --- Systemd for OpenCode Server ---
-step "Configuring OpenCode Server Service..."
-if is_root; then
-    cat > /etc/systemd/system/opencode-server.service <<UNIT
-[Unit]
-Description=OpenCode Server
-After=network.target
-
-[Service]
-Type=simple
-User=root
-ExecStart=$HOME/.opencode/bin/opencode serve --port $PORT
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-
-    systemctl daemon-reload
-    systemctl enable opencode-server > /dev/null 2>&1 || true
-    systemctl start opencode-server || true
-    success "OpenCode server service configured."
-    substep "Waiting for server to initialize..."
-    sleep 5
-else
-    warn "Skipping systemd service creation (requires root)."
-    info "You can start the server manually with: opencode serve --port $PORT"
-fi
-
-# --- Chat ID Detection ---
+# --- Chat ID Detection (Required for .env) ---
 step "Configuring Telegram Chat ID..."
 if [ -z "$CHAT_ID" ]; then
   echo -e "\n${BOLD}${CYAN}  Please send a message to your bot on Telegram now.${NC}"
@@ -159,7 +129,8 @@ else
 fi
 
 if [ -z "$CHAT_ID" ]; then
-  warn "No message detected. You will need to manually update your .env file later."
+  warn "No message detected. Using placeholder Chat ID."
+  CHAT_ID="00000000"
 fi
 
 # --- Environment File ---
@@ -175,8 +146,40 @@ LOG_LEVEL=info
 EOF
 success ".env file generated."
 
-# --- Systemd for Telegram Bot ---
-step "Configuring Telegram Bot Service..."
+# --- Start OpenCode Server ---
+step "Starting OpenCode Server..."
+if is_root; then
+    cat > /etc/systemd/system/opencode-server.service <<UNIT
+[Unit]
+Description=OpenCode Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=$HOME/.opencode/bin/opencode serve --port $PORT
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+    systemctl daemon-reload
+    systemctl enable opencode-server > /dev/null 2>&1 || true
+    systemctl start opencode-server || true
+    success "OpenCode server started via systemd."
+else
+    if command -v opencode &>/dev/null; then
+        substep "Starting via nohup (background)..."
+        nohup opencode serve --port $PORT > "$INSTALL_DIR/opencode-server.log" 2>&1 &
+        success "OpenCode server started in background."
+    else
+        warn "OpenCode command not found. Skipping start."
+    fi
+fi
+
+# --- Start Telegram Bot ---
+step "Starting Telegram Bot..."
 if is_root; then
     cat > /etc/systemd/system/opencode-telegram.service <<UNIT
 [Unit]
@@ -200,26 +203,38 @@ Environment=OPENCODE_MODEL_ID=big-pickle
 [Install]
 WantedBy=multi-user.target
 UNIT
-
     systemctl daemon-reload
     systemctl enable opencode-telegram > /dev/null 2>&1 || true
     systemctl start opencode-telegram || true
-    success "Telegram bot service configured."
+    success "Telegram bot started via systemd."
 else
-    warn "Skipping systemd service creation (requires root)."
-    info "You can start the bot manually with: cd $INSTALL_DIR && bun run start"
+    if command -v bun &>/dev/null; then
+        substep "Starting via nohup (background)..."
+        cd "$INSTALL_DIR"
+        nohup bun run start > "$INSTALL_DIR/telegram-bot.log" 2>&1 &
+        success "Telegram bot started in background."
+    else
+        warn "Bun not found. Skipping bot start."
+    fi
 fi
 
 # --- Final Output ---
 echo -e "\n${BOLD}${GREEN}============================================${NC}"
 echo -e "${BOLD}${GREEN}              SETUP COMPLETE!               ${NC}"
 echo -e "${BOLD}${GREEN}============================================${NC}"
+
 if is_root; then
     echo -e "  ${CYAN}OpenCode Server${NC} : http://127.0.0.1:$PORT"
-    echo -e "  ${CYAN}Telegram Bot${NC}    : Running as a system service"
+    echo -e "  ${CYAN}Status${NC}          : Running as systemd services"
+    echo -e "\n${BOLD}Commands:${NC}"
+    echo -e "  systemctl status opencode-telegram"
 else
-    echo -e "  ${YELLOW}Notice${NC}: Running in User Mode (Non-Root)"
-    echo -e "  ${CYAN}Run Manually${NC}    : cd $INSTALL_DIR && bun run start"
+    echo -e "  ${YELLOW}Mode${NC}            : User Mode (Non-Root)"
+    echo -e "  ${CYAN}OpenCode Server${NC} : http://127.0.0.1:$PORT"
+    echo -e "  ${CYAN}Background Log${NC}  : $INSTALL_DIR/telegram-bot.log"
+    echo -e "\n${BOLD}Management Commands:${NC}"
+    echo -e "  ${YELLOW}View Logs${NC}       : tail -f $INSTALL_DIR/telegram-bot.log"
+    echo -e "  ${YELLOW}Stop Bot${NC}        : pkill -f \"bun run start\""
 fi
 
 echo -e "\nEnjoy your AI assistant!\n"
