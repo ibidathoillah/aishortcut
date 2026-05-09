@@ -32,17 +32,18 @@ if [ "$EUID" -ne 0 ]; then
   error "Please run this script as root (e.g., using sudo)."
 fi
 
-if [ -z "$BOT_TOKEN" ]; then
-  echo -e "${BOLD}Usage:${NC} $0 <TELEGRAM_BOT_TOKEN> [PORT] [CHAT_ID]"
-  echo -e "  ${YELLOW}TELEGRAM_BOT_TOKEN${NC} : Required. Get this from @BotFather on Telegram."
-  echo -e "  ${YELLOW}PORT${NC}               : Optional. OpenCode server port (default: 4096)."
-  echo -e "  ${YELLOW}CHAT_ID${NC}            : Optional. Your Telegram chat ID (will auto-detect if omitted)."
-  exit 1
-fi
-
 echo -e "\n${BOLD}${GREEN}============================================${NC}"
 echo -e "${BOLD}${GREEN}  OpenCode + Telegram Bot Auto-Installer    ${NC}"
 echo -e "${BOLD}${GREEN}============================================${NC}\n"
+
+if [ -z "$BOT_TOKEN" ]; then
+  warn "No Telegram Bot Token provided."
+  echo -ne "${BOLD}${CYAN}▶ Please enter your Telegram Bot Token: ${NC}"
+  read -r BOT_TOKEN
+  if [ -z "$BOT_TOKEN" ]; then
+    error "Bot Token is required to continue."
+  fi
+fi
 
 # --- Install OpenCode ---
 step "Installing OpenCode..."
