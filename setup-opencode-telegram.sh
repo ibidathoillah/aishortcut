@@ -24,11 +24,16 @@ substep() { echo -e "  ${NC}└─ $1${NC}"; }
 
 # --- Arguments ---
 BOT_TOKEN="${1:-}"
-PORT="${2:-4096}"
+PORT="${2:-}"
 CHAT_ID="${3:-}"
 
 # --- Permission Helper ---
 is_root() { [ "$EUID" -eq 0 ]; }
+
+# --- Random Port Helper ---
+if [ -z "$PORT" ]; then
+  PORT=$((RANDOM % 64511 + 1024))
+fi
 
 # --- Prerequisites Check ---
 if ! is_root; then
