@@ -8,14 +8,15 @@ A collection of scripts and tools for setting up AI-powered shortcuts and bots.
 
 ## Usage
 
-### OpenCode + Telegram Bot
+### One-Liner Installation
 
-Run the setup script:
+Run this command to clone the repo and start the setup directly:
 
 ```bash
-chmod +x setup-opencode-telegram.sh
-./setup-opencode-telegram.sh <TELEGRAM_BOT_TOKEN> [PORT]
+git clone https://github.com/ibidathoillah/aishortcut.git && cd aishortcut && sudo chmod +x setup-opencode-telegram.sh && sudo ./setup-opencode-telegram.sh <TELEGRAM_BOT_TOKEN>
 ```
+
+### Manual Setup
 
 - `<TELEGRAM_BOT_TOKEN>`: Your bot token from [@BotFather](https://t.me/BotFather).
 - `[PORT]`: (Optional) Port for the OpenCode server (default: 4096).
