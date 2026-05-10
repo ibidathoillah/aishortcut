@@ -99,7 +99,8 @@ if [ -d "$INSTALL_DIR" ]; then
   substep "Updating repo remote and pulling latest changes..."
   cd "$INSTALL_DIR"
   git remote set-url origin https://github.com/ibidathoillah/opencode-telegram-bot.git
-  git pull > /dev/null 2>&1 || true
+  git fetch origin main
+  git reset --hard origin/main
   substep "Services stopped and repo updated."
 else
   substep "Cloning repository to $INSTALL_DIR..."
