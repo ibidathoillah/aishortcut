@@ -75,7 +75,33 @@ bash <(curl -sfL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main
 ~/.gemini-telegram-manage.sh stop     # stop the bot
 ~/.gemini-telegram-manage.sh start    # start the bot
 ~/.gemini-telegram-manage.sh restart  # restart the bot
+~/.gemini-telegram-manage.sh wake     # acquire wake lock
 ```
+
+### Phantom Process Killer (Android 12+)
+
+Android 12+ kills background processes exceeding 32 phantom processes. If the bot keeps dying:
+
+1. **Wake lock** — script auto-acquires `termux-wake-lock` on start
+2. **Battery** — set Termux to **Unrestricted** in Settings > Apps > Termux > Battery
+3. **Disable phantom killer** via ADB, Termux (wireless ADB), or root:
+
+```bash
+# From Termux itself (wireless ADB):
+pkg install android-tools
+adb pair 192.168.1.x:PORT          # from Developer Options > Wireless debugging
+adb connect 192.168.1.x:PORT
+adb shell device_config set_sync_disabled_for_tests persistent
+adb shell device_config put activity_manager max_phantom_processes 2147483647
+adb shell settings put global settings_enable_monitor_phantom_procs false
+
+# Root alternative (directly in Termux):
+su -c /system/bin/device_config set_sync_disabled_for_tests persistent
+su -c /system/bin/device_config put activity_manager max_phantom_processes 2147483647
+su -c setprop persist.sys.fflag.override.settings_enable_monitor_phantom_procs false
+```
+
+Reference: [atamshkai/Phantom-Process-Killer](https://github.com/atamshkai/Phantom-Process-Killer)
 
 ---
 

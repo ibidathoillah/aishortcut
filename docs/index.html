@@ -118,6 +118,15 @@
         <tr><td><code>BOT_TOKEN</code></td><td>Telegram token from @BotFather</td></tr>
         <tr><td><code>CHAT_ID</code></td><td>Your Telegram user ID (auto-detected)</td></tr>
       </table>
+      <details style="margin-top:0.75rem;">
+        <summary style="color:#f0883e;cursor:pointer;font-weight:600;">Phantom Process Killer (Android 12+)</summary>
+        <p style="margin-top:0.5rem;color:#8b949e;font-size:0.9rem;">
+          If the bot keeps dying, Android's phantom process killer may be the cause.
+          The script auto-acquires <code>termux-wake-lock</code> and includes disable instructions.
+          <br><br>
+          Reference: <a href="https://github.com/atamshkai/Phantom-Process-Killer" style="color:#58a6ff;">atamshkai/Phantom-Process-Killer</a>
+        </p>
+      </details>
     </div>
 
     <div class="card">
@@ -183,7 +192,7 @@
         </tr>
         <tr>
           <td>Gemini Termux</td>
-          <td colspan="3"><code>~/.gemini-telegram-manage.sh {status|logs|stop|start|restart}</code></td>
+          <td colspan="3"><code>~/.gemini-telegram-manage.sh {status|logs|stop|start|restart|wake}</code></td>
         </tr>
       </table>
     </div>
