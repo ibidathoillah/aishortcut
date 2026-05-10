@@ -9,8 +9,6 @@ One-command deploy scripts to run AI coding assistants via Telegram.
 
 ## OpenCode + Telegram
 
-[`setup-opencode-telegram.sh`](setup-opencode-telegram.sh) — Deploys an [OpenCode](https://github.com/anomalyco/opencode) AI server with a Telegram bot.
-
 ```bash
 bash <(curl -sfL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main/setup-opencode-telegram.sh)
 ```
@@ -21,29 +19,11 @@ bash <(curl -sfL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main
 | `PORT` | OpenCode server port (random if omitted) |
 | `CHAT_ID` | Your Telegram user ID (auto-detected) |
 
-**Dual-Mode:**
-| Feature | Root Mode | User Mode |
-| :--- | :--- | :--- |
-| Location | `/opt/opencode-telegram-bot` | `~/opencode-telegram-bot` |
-| Process Manager | `systemd` | `nohup` |
-| Boot Persistence | Yes | No |
-
-**Management:**
-```bash
-# Root
-systemctl status opencode-telegram
-journalctl -u opencode-telegram -f
-
-# User
-tail -f ~/opencode-telegram-bot/telegram-bot.log
-pkill -f "bun run start"
-```
+**Source:** [`scripts/opencode/setup.sh`](scripts/opencode/setup.sh)
 
 ---
 
 ## Gemini CLI + Telegram
-
-[`setup-gemini-telegram.sh`](setup-gemini-telegram.sh) — Deploys [Gemini CLI](https://github.com/google-gemini/gemini-cli) with a Telegram bot frontend.
 
 ```bash
 bash <(curl -sfL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main/setup-gemini-telegram.sh)
@@ -54,45 +34,38 @@ bash <(curl -sfL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main
 | `BOT_TOKEN` | Telegram bot token from @BotFather |
 | `CHAT_ID` | Your Telegram user ID (auto-detected) |
 
-**Dual-Mode:**
-| Feature | Root Mode | User Mode |
-| :--- | :--- | :--- |
-| Process Manager | `systemd` | Built-in daemon |
-| Boot Persistence | Yes | No |
-
-**Management:**
-```bash
-# Root
-systemctl status gemini-telegram
-journalctl -u gemini-telegram -f
-
-# User
-gemini-cli-telegram status
-gemini-cli-telegram logs
-gemini-cli-telegram stop
-```
-
----
+**Source:** [`scripts/gemini/setup.sh`](scripts/gemini/setup.sh)
 
 ---
 
 ## Termux (Android)
-
-[`setup-gemini-telegram-termux.sh`](setup-gemini-telegram-termux.sh) — Termux-optimized deploy for Android.
 
 ```bash
 pkg install curl git -y
 bash <(curl -sfL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main/setup-gemini-telegram-termux.sh)
 ```
 
-The script installs `binutils`, `build-essential`, and `python` for native module compilation, then falls back to `--ignore-scripts` if compilation fails. Manages the bot via a helper script at `~/.gemini-telegram-manage.sh` since systemd is not available on Termux.
+**Source:** [`scripts/gemini/setup-termux.sh`](scripts/gemini/setup-termux.sh)
 
-**Management:**
-```bash
-~/.gemini-telegram-manage.sh status   # check if running
-~/.gemini-telegram-manage.sh logs     # tail log output
-~/.gemini-telegram-manage.sh stop     # stop the bot
-~/.gemini-telegram-manage.sh start    # start the bot
+---
+
+## Project Structure
+
+```
+aishortcut/
+├── setup-opencode-telegram.sh      # root forwarder
+├── setup-gemini-telegram.sh        # root forwarder
+├── setup-gemini-telegram-termux.sh # root forwarder
+├── scripts/
+│   ├── opencode/
+│   │   └── setup.sh                # OpenCode + Telegram installer
+│   └── gemini/
+│       ├── setup.sh                # Gemini CLI + Telegram installer
+│       └── setup-termux.sh         # Termux-optimized Gemini installer
+├── docs/
+│   └── index.html
+├── README.md
+└── .gitignore
 ```
 
 ## Manual Setup
@@ -100,6 +73,8 @@ The script installs `binutils`, `build-essential`, and `python` for native modul
 ```bash
 git clone https://github.com/ibidathoillah/aishortcut.git
 cd aishortcut
-chmod +x setup-*.sh
-./setup-opencode-telegram.sh   # or ./setup-gemini-telegram.sh
+chmod +x setup-*.sh scripts/*/setup*.sh
+./scripts/opencode/setup.sh       # OpenCode + Telegram
+./scripts/gemini/setup.sh         # Gemini + Telegram
+./scripts/gemini/setup-termux.sh  # Gemini + Telegram (Termux)
 ```
