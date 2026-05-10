@@ -41,7 +41,7 @@ fi
 # --- Install Prerequisites ---
 step "Checking prerequisites"
 MISSING=""
-for cmd in curl git tar gzip; do
+for cmd in curl git tar gzip unzip; do
   if command -v "$cmd" >/dev/null 2>&1; then
     substep "$cmd ... ok"
   else
