@@ -74,6 +74,27 @@ gemini-cli-telegram stop
 
 ---
 
+---
+
+## Termux (Android)
+
+[`setup-gemini-telegram-termux.sh`](setup-gemini-telegram-termux.sh) — Termux-optimized deploy for Android.
+
+```bash
+pkg install curl git -y
+bash <(curl -sfL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main/setup-gemini-telegram-termux.sh)
+```
+
+The script installs `binutils`, `build-essential`, and `python` for native module compilation, then falls back to `--ignore-scripts` if compilation fails. Manages the bot via a helper script at `~/.gemini-telegram-manage.sh` since systemd is not available on Termux.
+
+**Management:**
+```bash
+~/.gemini-telegram-manage.sh status   # check if running
+~/.gemini-telegram-manage.sh logs     # tail log output
+~/.gemini-telegram-manage.sh stop     # stop the bot
+~/.gemini-telegram-manage.sh start    # start the bot
+```
+
 ## Manual Setup
 
 ```bash
