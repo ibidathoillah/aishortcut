@@ -88,9 +88,18 @@ fi
 
 step "Setting up Telegram bot repository..."
 if [ -d "$INSTALL_DIR" ]; then
-  substep "Directory exists ($INSTALL_DIR). Pulling latest changes..."
+  substep "Directory exists ($INSTALL_DIR). Stopping services..."
+  if is_root; then
+    systemctl stop opencode-telegram opencode-server > /dev/null 2>&1 || true
+  else
+    pkill -f "bun run start" > /dev/null 2>&1 || true
+    pkill -f "opencode serve" > /dev/null 2>&1 || true
+    sleep 2
+  fi
+  substep "Pulling latest changes..."
   cd "$INSTALL_DIR"
   git pull > /dev/null 2>&1 || true
+  substep "Services stopped and repo updated."
 else
   substep "Cloning repository to $INSTALL_DIR..."
   git clone https://github.com/ibidathoillah/opencode-telegram-bot.git "$INSTALL_DIR" > /dev/null 2>&1 || true
@@ -171,13 +180,13 @@ WantedBy=multi-user.target
 UNIT
     systemctl daemon-reload
     systemctl enable opencode-server > /dev/null 2>&1 || true
-    systemctl start opencode-server || true
-    success "OpenCode server started via systemd."
+    systemctl restart opencode-server || true
+    success "OpenCode server (re)started via systemd."
 else
     if command -v opencode &>/dev/null; then
         substep "Starting via nohup (background)..."
         nohup opencode serve --port $PORT > "$INSTALL_DIR/opencode-server.log" 2>&1 &
-        success "OpenCode server started in background."
+        success "OpenCode server (re)started in background."
     else
         warn "OpenCode command not found. Skipping start."
     fi
@@ -210,14 +219,14 @@ WantedBy=multi-user.target
 UNIT
     systemctl daemon-reload
     systemctl enable opencode-telegram > /dev/null 2>&1 || true
-    systemctl start opencode-telegram || true
-    success "Telegram bot started via systemd."
+    systemctl restart opencode-telegram || true
+    success "Telegram bot (re)started via systemd."
 else
     if command -v bun &>/dev/null; then
         substep "Starting via nohup (background)..."
         cd "$INSTALL_DIR"
         nohup bun run start > "$INSTALL_DIR/telegram-bot.log" 2>&1 &
-        success "Telegram bot started in background."
+        success "Telegram bot (re)started in background."
     else
         warn "Bun not found. Skipping bot start."
     fi
