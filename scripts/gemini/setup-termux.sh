@@ -189,6 +189,9 @@ info ""
 info "  Verify (root):"
 info "    su -c /system/bin/dumpsys activity settings | grep max_phantom_processes"
 info "    # should return 2147483647"
+info ""
+info "  Reference: https://github.com/atamshkai/Phantom-Process-Killer"
+info "  (check the repo if you get stuck)"
 ok
 
 # --- Start Bot (nohup — systemd not available on Termux) ---
@@ -292,4 +295,5 @@ echo -e "  ${YELLOW}⚠  Phantom killer mitigation${NC}"
 echo -e "  ${YELLOW}  If bot keeps dying, disable phantom process killer:${NC}"
 echo -e "  ${YELLOW}  pkg install android-tools && adb pair ... (see instructions above)${NC}"
 echo -e "  ${YELLOW}  Also set Termux to Unrestricted battery in Settings.${NC}"
+echo -e "  ${YELLOW}  Reference: https://github.com/atamshkai/Phantom-Process-Killer${NC}"
 echo ""
