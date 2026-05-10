@@ -155,6 +155,21 @@ if command -v gemini-cli-telegram >/dev/null 2>&1; then
 fi
 ok
 
+# --- Phantom Process Killer Mitigation ---
+step "Mitigating Android phantom process killer"
+if command -v termux-wake-lock >/dev/null 2>&1; then
+  substep "Acquiring wake lock..."
+  termux-wake-lock
+  success "  Wake lock acquired."
+else
+  substep "termux-wake-lock not available (install termux-api)."
+fi
+
+substep "Battery optimization: add Termux to Unrestricted mode in Settings > Apps > Termux > Battery"
+info "  ADB fix (run from computer once):"
+info "    adb shell settings put global settings_enable_monitor_phantom_procs false"
+ok
+
 # --- Start Bot (nohup — systemd not available on Termux) ---
 step "Starting the bot"
 
@@ -162,7 +177,7 @@ step "Starting the bot"
 gemini-cli-telegram stop 2>/dev/null || true
 sleep 1
 
-# Start as background daemon
+# Start as background daemon with resume guard
 gemini-cli-telegram start 2>/dev/null || {
   substep "Daemon command not available, using nohup..."
   CLI_PATH=$(command -v gemini-cli-telegram)
@@ -175,6 +190,9 @@ MANAGE_SCRIPT="$HOME/.gemini-telegram-manage.sh"
 substep "Creating management script at $MANAGE_SCRIPT"
 cat > "$MANAGE_SCRIPT" <<'MANAGE'
 #!/bin/bash
+acquire_lock() {
+  command -v termux-wake-lock >/dev/null 2>&1 && termux-wake-lock
+}
 case "${1:-status}" in
   status)
     if pgrep -f "gemini-cli-telegram" >/dev/null 2>&1; then
@@ -184,9 +202,11 @@ case "${1:-status}" in
       done
     else
       echo "Gemini Telegram Bot: STOPPED"
+      echo "  (phantom killer may have killed it)"
     fi
     ;;
   start)
+    acquire_lock
     nohup gemini-cli-telegram start --live > "$HOME/gemini-telegram.log" 2>&1 &
     echo "Started (pid $!)"
     ;;
@@ -201,8 +221,12 @@ case "${1:-status}" in
   restart)
     $0 stop; sleep 1; $0 start
     ;;
+  wake)
+    acquire_lock
+    echo "Wake lock acquired."
+    ;;
   *)
-    echo "Usage: $0 {status|start|stop|restart|logs}"
+    echo "Usage: $0 {status|start|stop|restart|logs|wake}"
     ;;
 esac
 MANAGE
@@ -215,7 +239,15 @@ if [ -d "$HOME/.termux/boot" ]; then
 #!/data/data/com.termux/files/usr/bin/bash
 termux-wake-lock
 sleep 10
-gemini-cli-telegram start --live > "$HOME/gemini-telegram.log" 2>&1 &
+# Restart guard: retry if phantom killer strikes
+for i in 1 2 3; do
+  gemini-cli-telegram start --live >> "$HOME/gemini-telegram.log" 2>&1 &
+  PID=$!
+  sleep 30
+  if kill -0 $PID 2>/dev/null; then
+    break
+  fi
+done
 BOOT
   chmod +x "$HOME/.termux/boot/gemini-telegram.sh"
   success "  Auto-start enabled via Termux:Boot."
@@ -233,4 +265,10 @@ echo -e "  ${CYAN}Logs${NC}   : $MANAGE_SCRIPT logs"
 echo -e "  ${CYAN}Stop${NC}   : $MANAGE_SCRIPT stop"
 echo -e "  ${CYAN}Start${NC}  : $MANAGE_SCRIPT start"
 echo -e "  ${CYAN}Restart${NC}: $MANAGE_SCRIPT restart"
+echo -e "  ${CYAN}Wake${NC}   : $MANAGE_SCRIPT wake"
+echo ""
+echo -e "  ${YELLOW}⚠  Phantom killer mitigation${NC}"
+echo -e "  ${YELLOW}  If bot keeps dying, run from computer:${NC}"
+echo -e "  ${YELLOW}  adb shell settings put global settings_enable_monitor_phantom_procs false${NC}"
+echo -e "  ${YELLOW}  Also set Termux to Unrestricted battery in Settings.${NC}"
 echo ""
