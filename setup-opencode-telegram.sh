@@ -93,7 +93,7 @@ if [ -d "$INSTALL_DIR" ]; then
   git pull > /dev/null 2>&1 || true
 else
   substep "Cloning repository to $INSTALL_DIR..."
-  git clone https://github.com/grinev/opencode-telegram-bot.git "$INSTALL_DIR" > /dev/null 2>&1 || true
+  git clone https://github.com/ibidathoillah/opencode-telegram-bot.git "$INSTALL_DIR" > /dev/null 2>&1 || true
   cd "$INSTALL_DIR" || error "Could not enter directory $INSTALL_DIR"
 fi
 success "Repository ready at $INSTALL_DIR"
