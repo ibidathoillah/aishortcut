@@ -41,7 +41,7 @@ fi
 # --- Install Prerequisites ---
 step "Checking prerequisites"
 MISSING=""
-for cmd in curl git tar; do
+for cmd in curl git tar gzip; do
   if command -v "$cmd" >/dev/null 2>&1; then
     substep "$cmd ... ok"
   else
@@ -79,9 +79,38 @@ step "Installing OpenCode"
 if command -v opencode >/dev/null 2>&1; then
   success "  Already installed: $(opencode --version)"
 else
-  substep "Downloading and installing..."
-  curl -fsSL https://opencode.ai/install | bash
-  echo ""
+  substep "Detecting latest version..."
+  VERSION=$(curl -sfL https://api.github.com/repos/anomalyco/opencode/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+  [ -z "$VERSION" ] && error "Could not fetch latest OpenCode version."
+
+  raw_arch=$(uname -m)
+  case "$raw_arch" in
+    x86_64) arch="x64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    *) error "Unsupported architecture: $raw_arch" ;;
+  esac
+
+  # Check AVX2 for baseline variant
+  needs_baseline=false
+  if [ "$arch" = "x64" ] && ! grep -qi avx2 /proc/cpuinfo 2>/dev/null; then
+    needs_baseline=true
+  fi
+  target="$arch"
+  if [ "$needs_baseline" = "true" ]; then target="$target-baseline"; fi
+
+  filename="opencode-linux-$target.tar.gz"
+  url="https://github.com/anomalyco/opencode/releases/download/v$VERSION/$filename"
+  tmpdir=$(mktemp -d)
+
+  substep "Downloading v$VERSION ($target) ..."
+  curl -fSL -o "$tmpdir/$filename" "$url" || error "Download failed for $filename"
+
+  substep "Extracting..."
+  tar -xzf "$tmpdir/$filename" -C "$tmpdir" || error "Extraction failed."
+  mkdir -p "$HOME/.opencode/bin"
+  mv "$tmpdir/opencode" "$HOME/.opencode/bin/" || error "Move failed."
+  rm -rf "$tmpdir"
+
   export PATH="$HOME/.opencode/bin:$PATH"
   command -v opencode >/dev/null 2>&1 || error "OpenCode installation failed."
   success "  Installed: $(opencode --version)"
