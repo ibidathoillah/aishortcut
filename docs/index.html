@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIShortcut</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 3rem 1rem;
+    }
+    .container { max-width: 720px; width: 100%; }
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #58a6ff, #bc8cff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle { color: #8b949e; font-size: 1.1rem; margin-bottom: 2rem; }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .card h2 {
+      font-size: 1.2rem;
+      color: #58a6ff;
+      margin-bottom: 0.75rem;
+    }
+    code {
+      background: #1c2128;
+      padding: 0.2em 0.4em;
+      border-radius: 4px;
+      font-size: 0.9em;
+      color: #f0883e;
+    }
+    pre {
+      background: #1c2128;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 1rem;
+      overflow-x: auto;
+      margin: 0.75rem 0;
+    }
+    pre code { background: none; padding: 0; color: #c9d1d9; }
+    table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+    th, td { border: 1px solid #30363d; padding: 0.5rem 0.75rem; text-align: left; }
+    th { background: #1c2128; color: #8b949e; font-weight: 600; }
+    .btn {
+      display: inline-block;
+      background: #238636;
+      color: #fff;
+      padding: 0.75rem 1.5rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 600;
+      margin-top: 0.5rem;
+    }
+    .btn:hover { background: #2ea043; }
+    .footer { margin-top: 3rem; color: #484f58; font-size: 0.85rem; }
+    .footer a { color: #58a6ff; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>AIShortcut</h1>
+    <p class="subtitle">Deploy an AI-powered Telegram bot in one command</p>
+
+    <div class="card">
+      <h2>One-Command Setup</h2>
+      <pre><code>bash &lt;(curl -sfL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main/setup-opencode-telegram.sh)</code></pre>
+      <p style="margin-top:0.5rem;color:#8b949e;">
+        Installs OpenCode AI server + Telegram bot on any Linux machine.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>How It Works</h2>
+      <p>The auto-installer script:</p>
+      <ol style="padding-left:1.25rem;margin-top:0.5rem;">
+        <li>Installs prerequisites (curl, git, tar, gzip, unzip)</li>
+        <li>Downloads the latest OpenCode AI binary</li>
+        <li>Installs the Bun JavaScript runtime</li>
+        <li>Clones and builds the Telegram bot</li>
+        <li>Configures your Telegram bot token &amp; chat ID</li>
+        <li>Starts both services</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>Dual-Mode Support</h2>
+      <table>
+        <tr><th>Feature</th><th>Root Mode</th><th>User Mode</th></tr>
+        <tr><td>Install Path</td><td><code>/opt/opencode-telegram-bot</code></td><td><code>~/opencode-telegram-bot</code></td></tr>
+        <tr><td>Process Manager</td><td><code>systemd</code></td><td><code>nohup</code></td></tr>
+        <tr><td>Boot Persistence</td><td>Yes</td><td>No</td></tr>
+        <tr><td>Logs</td><td><code>journalctl</code></td><td><code>tail -f *.log</code></td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Advanced Usage</h2>
+      <pre><code>bash setup-opencode-telegram.sh &lt;BOT_TOKEN&gt; [PORT] [CHAT_ID]</code></pre>
+      <p style="margin-top:0.5rem;color:#8b949e;">
+        Pass arguments directly to skip interactive prompts.
+      </p>
+    </div>
+
+    <a href="https://github.com/ibidathoillah/aishortcut" class="btn">View on GitHub</a>
+
+    <div class="footer">
+      <a href="https://github.com/ibidathoillah/aishortcut">AIShortcut</a> &middot; MIT
+    </div>
+  </div>
+</body>
+</html>
