@@ -38,9 +38,41 @@ if [ -z "$BOT_TOKEN" ]; then
   [ -z "$BOT_TOKEN" ] && error "Bot Token is required."
 fi
 
+# --- Install Prerequisites ---
+step "Checking prerequisites"
+MISSING=""
 for cmd in curl git; do
-  command -v "$cmd" >/dev/null 2>&1 || error "'$cmd' is required but not installed."
+  if command -v "$cmd" >/dev/null 2>&1; then
+    substep "$cmd ... ok"
+  else
+    substep "$cmd ... missing"
+    MISSING="$MISSING $cmd"
+  fi
 done
+
+if [ -n "$MISSING" ]; then
+  if is_root; then
+    if command -v apt-get >/dev/null 2>&1; then
+      substep "Installing missing packages via apt..."
+      apt-get update -qq && apt-get install -y -qq $MISSING
+    elif command -v yum >/dev/null 2>&1; then
+      substep "Installing missing packages via yum..."
+      yum install -y -q $MISSING
+    elif command -v apk >/dev/null 2>&1; then
+      substep "Installing missing packages via apk..."
+      apk add --quiet $MISSING
+    elif command -v pacman >/dev/null 2>&1; then
+      substep "Installing missing packages via pacman..."
+      pacman -S --noconfirm $MISSING
+    else
+      error "No supported package manager found. Install manually: $MISSING"
+    fi
+  else
+    warn "Missing commands: $MISSING"
+    warn "Run as root or install manually: apt install$MISSING"
+  fi
+fi
+ok
 
 # --- Install OpenCode ---
 step "Installing OpenCode"
