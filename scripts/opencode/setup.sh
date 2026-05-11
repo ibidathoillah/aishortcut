@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ============================================
-# OpenCode + Telegram Bot Auto-Installer
+# OpenCode + Telegram Bot Auto-Installer (Enhanced)
 # Usage: ./setup-opencode-telegram.sh <BOT_TOKEN> [PORT] [CHAT_ID]
 # ============================================
 
@@ -20,10 +20,10 @@ fail()    { echo -e "  ${RED}FAIL${NC}"; exit 1; }
 BOT_TOKEN="${1:-}"
 PORT="${2:-}"
 CHAT_ID="${3:-}"
+OS="$(uname -s)"
+ARCH="$(uname -m)"
 
 is_root() { [ "$EUID" -eq 0 ]; }
-
-[ -z "$PORT" ] && PORT=$((RANDOM % 64511 + 1024))
 
 trap 'echo -e "\n  ${RED}Setup interrupted.${NC}"; exit 1' INT TERM
 
@@ -31,15 +31,86 @@ echo -e "\n${BOLD}${GREEN}============================================${NC}"
 echo -e "${BOLD}${GREEN}  OpenCode + Telegram Bot Auto-Installer    ${NC}"
 echo -e "${BOLD}${GREEN}============================================${NC}\n"
 
+# --- Process Monitoring & Interactive Menu ---
+list_active_instances() {
+  echo -e "${BOLD}Current Active Instances:${NC}"
+  # Find opencode serve processes
+  local found=0
+  # macOS/Linux ps behavior varies, but -ef is usually safe
+  while read -r line; do
+    if [[ -n "$line" ]]; then
+      pid=$(echo "$line" | awk '{print $2}')
+      port=$(echo "$line" | grep -o "\-\-port [0-9]*" | awk '{print $2}')
+      # Try to find the token from .env files in likely locations
+      token="Unknown"
+      env_file=$(find "$HOME" -name ".env" -maxdepth 3 2>/dev/null | xargs grep -l "OPENCODE_API_URL=http://127.0.0.1:$port" 2>/dev/null | head -1)
+      if [[ -f "$env_file" ]]; then
+        token=$(grep "TELEGRAM_BOT_TOKEN=" "$env_file" | cut -d= -f2)
+        token_masked="${token:0:4}...${token: -4}"
+      else
+        token_masked="Not found"
+      fi
+      echo -e "  ${BLUE}Port: $port${NC} | PID: $pid | Bot: $token_masked"
+      found=1
+    fi
+  done < <(ps -ef | grep "opencode serve" | grep -v grep)
+  
+  if [ $found -eq 0 ]; then
+    echo -e "  ${YELLOW}No active instances found.${NC}"
+  fi
+  echo ""
+  return $found
+}
+
+if ps -ef | grep "opencode serve" | grep -v grep >/dev/null; then
+  list_active_instances
+  echo -e "${BOLD}What would you like to do?${NC}"
+  echo -e "  [A] Add new instance"
+  echo -e "  [R] Replace/Restart existing (will kill current)"
+  echo -e "  [S] Stop an instance"
+  echo -e "  [Q] Quit"
+  echo -ne "${CYAN}  Select an option: ${NC}"
+  read -r choice
+  case $choice in
+    [Rr]* ) 
+      echo -ne "${CYAN}  Enter port to replace: ${NC}"
+      read -r target_port
+      pkill -f "opencode serve --port $target_port"
+      pkill -f "bun run start" # Note: might kill others, but usually one bot per user
+      PORT=$target_port
+      ;;
+    [Ss]* )
+      echo -ne "${CYAN}  Enter port to stop: ${NC}"
+      read -r target_port
+      pkill -f "opencode serve --port $target_port"
+      echo -e "${GREEN}  Stopped.${NC}"
+      exit 0
+      ;;
+    [Qq]* ) exit 0 ;;
+    * ) [ -z "$PORT" ] && PORT=$((RANDOM % 64511 + 1024)) ;;
+  esac
+else
+  [ -z "$PORT" ] && PORT=$((RANDOM % 64511 + 1024))
+fi
+
 if [ -z "$BOT_TOKEN" ]; then
-  warn "No Telegram Bot Token provided."
-  echo -ne "${CYAN}  Enter your Telegram Bot Token: ${NC}"
-  read -r BOT_TOKEN
+  # Check if we can find a token in existing .env
+  EXISTING_TOKEN=$(find "$HOME" -name ".env" -maxdepth 3 2>/dev/null | xargs grep "TELEGRAM_BOT_TOKEN=" 2>/dev/null | head -1 | cut -d= -f2)
+  if [ -n "$EXISTING_TOKEN" ]; then
+    warn "Found existing token: ${EXISTING_TOKEN:0:4}...${EXISTING_TOKEN: -4}"
+    echo -ne "${CYAN}  Press Enter to reuse, or type new Token: ${NC}"
+    read -r input_token
+    BOT_TOKEN="${input_token:-$EXISTING_TOKEN}"
+  else
+    warn "No Telegram Bot Token provided."
+    echo -ne "${CYAN}  Enter your Telegram Bot Token: ${NC}"
+    read -r BOT_TOKEN
+  fi
   [ -z "$BOT_TOKEN" ] && error "Bot Token is required."
 fi
 
 # --- Install Prerequisites ---
-step "Checking prerequisites"
+step "Checking prerequisites ($OS)"
 MISSING=""
 for cmd in curl git tar gzip unzip; do
   if command -v "$cmd" >/dev/null 2>&1; then
@@ -51,7 +122,14 @@ for cmd in curl git tar gzip unzip; do
 done
 
 if [ -n "$MISSING" ]; then
-  if is_root; then
+  if [ "$OS" = "Darwin" ]; then
+    if ! command -v brew >/dev/null 2>&1; then
+      substep "Installing Homebrew..."
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    fi
+    substep "Installing missing packages via brew..."
+    brew install $MISSING
+  elif is_root; then
     if command -v apt-get >/dev/null 2>&1; then
       substep "Installing missing packages via apt..."
       apt-get update -qq && apt-get install -y -qq $MISSING
@@ -83,30 +161,44 @@ else
   VERSION=$(curl -sfL https://api.github.com/repos/anomalyco/opencode/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
   [ -z "$VERSION" ] && error "Could not fetch latest OpenCode version."
 
-  raw_arch=$(uname -m)
-  case "$raw_arch" in
-    x86_64) arch="x64" ;;
-    aarch64|arm64) arch="arm64" ;;
-    *) error "Unsupported architecture: $raw_arch" ;;
+  case "$OS" in
+    Linux)
+      raw_arch=$ARCH
+      case "$raw_arch" in
+        x86_64) arch="x64" ;;
+        aarch64|arm64) arch="arm64" ;;
+        *) error "Unsupported Linux architecture: $raw_arch" ;;
+      esac
+      needs_baseline=false
+      if [ "$arch" = "x64" ] && ! grep -qi avx2 /proc/cpuinfo 2>/dev/null; then
+        needs_baseline=true
+      fi
+      target="$arch"
+      if [ "$needs_baseline" = "true" ]; then target="$target-baseline"; fi
+      filename="opencode-linux-$target.tar.gz"
+      EXTRACT_CMD="tar -xzf"
+      ;;
+    Darwin)
+      case "$ARCH" in
+        x86_64) arch="x64" ;;
+        arm64) arch="arm64" ;;
+        *) error "Unsupported macOS architecture: $ARCH" ;;
+      esac
+      # Note: We use the zip assets for macOS
+      filename="opencode-darwin-$arch.zip"
+      EXTRACT_CMD="unzip -o"
+      ;;
+    *) error "Unsupported OS: $OS" ;;
   esac
 
-  # Check AVX2 for baseline variant
-  needs_baseline=false
-  if [ "$arch" = "x64" ] && ! grep -qi avx2 /proc/cpuinfo 2>/dev/null; then
-    needs_baseline=true
-  fi
-  target="$arch"
-  if [ "$needs_baseline" = "true" ]; then target="$target-baseline"; fi
-
-  filename="opencode-linux-$target.tar.gz"
   url="https://github.com/anomalyco/opencode/releases/download/v$VERSION/$filename"
   tmpdir=$(mktemp -d)
 
-  substep "Downloading v$VERSION ($target) ..."
+  substep "Downloading v$VERSION ($filename) ..."
   curl -fSL -o "$tmpdir/$filename" "$url" || error "Download failed for $filename"
 
   substep "Extracting..."
-  tar -xzf "$tmpdir/$filename" -C "$tmpdir" || error "Extraction failed."
+  $EXTRACT_CMD "$tmpdir/$filename" -C "$tmpdir" || error "Extraction failed."
   mkdir -p "$HOME/.opencode/bin"
   mv "$tmpdir/opencode" "$HOME/.opencode/bin/" || error "Move failed."
   rm -rf "$tmpdir"
@@ -125,27 +217,29 @@ else
   curl -fsSL https://bun.sh/install | bash
   echo ""
   export PATH="$HOME/.bun/bin:$PATH"
+  # Add to shell profile for future use
+  if [ "$OS" = "Darwin" ]; then
+    PROFILE="$HOME/.zshrc"
+  else
+    PROFILE="$HOME/.bashrc"
+  fi
+  if ! grep -q ".bun/bin" "$PROFILE" 2>/dev/null; then
+    echo 'export PATH="$HOME/.bun/bin:$PATH"' >> "$PROFILE"
+  fi
   command -v bun >/dev/null 2>&1 || error "Bun installation failed."
   success "  Installed: $(bun --version)"
 fi
 
 # --- Setup Telegram Bot Repo ---
 if is_root; then
-  INSTALL_DIR="/opt/opencode-telegram-bot"
+  INSTALL_DIR="/opt/opencode-telegram-bot-$PORT"
 else
-  INSTALL_DIR="$HOME/opencode-telegram-bot"
+  INSTALL_DIR="$HOME/opencode-telegram-bot-$PORT"
 fi
 
-step "Setting up Telegram bot repository"
+step "Setting up Telegram bot repository ($PORT)"
 if [ -d "$INSTALL_DIR" ]; then
   substep "Directory exists at $INSTALL_DIR"
-  if is_root; then
-    systemctl stop opencode-telegram opencode-server 2>/dev/null || true
-  else
-    pkill -f "bun run start" 2>/dev/null || true
-    pkill -f "opencode serve" 2>/dev/null || true
-    sleep 1
-  fi
   substep "Pulling latest changes..."
   cd "$INSTALL_DIR"
   git remote set-url origin https://github.com/ibidathoillah/opencode-telegram-bot.git
@@ -201,12 +295,40 @@ LOG_LEVEL=info
 EOF
 ok
 
-# --- Start OpenCode Server ---
-step "Starting OpenCode Server"
-if is_root; then
-  cat > /etc/systemd/system/opencode-server.service <<UNIT
+# --- macOS Sleep Prevention ---
+if [ "$OS" = "Darwin" ]; then
+  step "macOS Sleep Prevention"
+  info "  To keep the bot running even when the lid is closed,"
+  info "  use the 'caffeinate' command. This script will try to"
+  info "  activate it in the background."
+  # We'll use caffeinate -dis which prevents idle sleep, system sleep, and display sleep
+  nohup caffeinate -dis >/dev/null 2>&1 &
+  substep "Caffeinate activated (PID $!)"
+fi
+
+# --- Start OpenCode & Bot (Auto-Reconnect) ---
+create_keep_alive_script() {
+  local name=$1
+  local cmd=$2
+  local log_file=$3
+  cat > "$INSTALL_DIR/keep-alive-$name.sh" <<EOF
+#!/bin/bash
+while true; do
+  echo "[$(date)] Starting $name..." >> "$log_file"
+  $cmd >> "$log_file" 2>&1
+  echo "[$(date)] $name crashed or stopped. Restarting in 5s..." >> "$log_file"
+  sleep 5
+done
+EOF
+  chmod +x "$INSTALL_DIR/keep-alive-$name.sh"
+}
+
+step "Starting Services"
+if is_root && [ "$OS" = "Linux" ]; then
+  # Systemd logic
+  cat > /etc/systemd/system/opencode-server-$PORT.service <<UNIT
 [Unit]
-Description=OpenCode Server
+Description=OpenCode Server ($PORT)
 After=network.target
 
 [Service]
@@ -219,23 +341,12 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 UNIT
-  systemctl daemon-reload
-  systemctl enable opencode-server
-  systemctl restart opencode-server
-  success "  Started via systemd (port $PORT)."
-else
-  nohup opencode serve --port "$PORT" > "$INSTALL_DIR/opencode-server.log" 2>&1 &
-  success "  Started in background (port $PORT, pid $!)."
-fi
 
-# --- Start Telegram Bot ---
-step "Starting Telegram Bot"
-if is_root; then
-  cat > /etc/systemd/system/opencode-telegram.service <<UNIT
+  cat > /etc/systemd/system/opencode-telegram-$PORT.service <<UNIT
 [Unit]
-Description=OpenCode Telegram Bot
-After=network.target opencode-server.service
-Wants=opencode-server.service
+Description=OpenCode Telegram Bot ($PORT)
+After=network.target opencode-server-$PORT.service
+Wants=opencode-server-$PORT.service
 
 [Service]
 Type=simple
@@ -248,14 +359,25 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 UNIT
+
   systemctl daemon-reload
-  systemctl enable opencode-telegram
-  systemctl restart opencode-telegram
-  success "  Started via systemd."
+  systemctl enable opencode-server-$PORT opencode-telegram-$PORT
+  systemctl restart opencode-server-$PORT opencode-telegram-$PORT
+  success "  Started via systemd (port $PORT)."
 else
-  cd "$INSTALL_DIR"
-  nohup bun run start > "$INSTALL_DIR/telegram-bot.log" 2>&1 &
-  success "  Started in background (pid $!)."
+  # Background loop logic for Mac and non-root Linux
+  substep "Creating auto-reconnect scripts..."
+  create_keep_alive_script "server" "$HOME/.opencode/bin/opencode serve --port $PORT" "$INSTALL_DIR/opencode-server.log"
+  create_keep_alive_script "bot" "cd $INSTALL_DIR && bun run start" "$INSTALL_DIR/telegram-bot.log"
+  
+  nohup "$INSTALL_DIR/keep-alive-server.sh" >/dev/null 2>&1 &
+  server_pid=$!
+  nohup "$INSTALL_DIR/keep-alive-bot.sh" >/dev/null 2>&1 &
+  bot_pid=$!
+  
+  success "  Started in background with auto-reconnect (port $PORT)."
+  substep "Server PID: $server_pid"
+  substep "Bot PID: $bot_pid"
 fi
 
 # --- Done ---
@@ -263,9 +385,10 @@ echo -e "\n${BOLD}${GREEN}============================================${NC}"
 echo -e "${BOLD}${GREEN}              SETUP COMPLETE!               ${NC}"
 echo -e "${BOLD}${GREEN}============================================${NC}"
 echo -e "  ${CYAN}OpenCode${NC} : http://127.0.0.1:$PORT"
-if is_root; then
-  echo -e "  ${CYAN}Status${NC}   : systemctl status opencode-telegram"
+if is_root && [ "$OS" = "Linux" ]; then
+  echo -e "  ${CYAN}Status${NC}   : systemctl status opencode-telegram-$PORT"
 else
   echo -e "  ${CYAN}Logs${NC}     : tail -f $INSTALL_DIR/telegram-bot.log"
 fi
+echo -e "  ${YELLOW}Tip${NC}      : If on Mac, keep this terminal open or ensure 'caffeinate' is running."
 echo ""
