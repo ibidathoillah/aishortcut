@@ -33,40 +33,58 @@ echo -e "${BOLD}${GREEN}============================================${NC}\n"
 
 # --- Process Monitoring & Interactive Menu ---
 list_active_instances() {
-  echo -e "${BOLD}Current Active Instances:${NC}"
-  # Find opencode serve processes
-  local found=0
-  # macOS/Linux ps behavior varies, but -ef is usually safe
-  while read -r line; do
-    if [[ -n "$line" ]]; then
-      pid=$(echo "$line" | awk '{print $2}')
-      port=$(echo "$line" | grep -o "\-\-port [0-9]*" | awk '{print $2}')
-      # Try to find the token from .env files in likely locations
-      token="Unknown"
-      env_file=$(find "$HOME" -name ".env" -maxdepth 3 2>/dev/null | xargs grep -l "OPENCODE_API_URL=http://127.0.0.1:$port" 2>/dev/null | head -1)
-      if [[ -f "$env_file" ]]; then
-        token=$(grep "TELEGRAM_BOT_TOKEN=" "$env_file" | cut -d= -f2)
-        token_masked="${token:0:4}...${token: -4}"
-      else
-        token_masked="Not found"
-      fi
-      echo -e "  ${BLUE}Port: $port${NC} | PID: $pid | Bot: $token_masked"
-      found=1
-    fi
-  done < <(ps -ef | grep "opencode serve" | grep -v grep)
+  echo -e "${BOLD}Current Active Instances (grouped by Port):${NC}"
   
-  if [ $found -eq 0 ]; then
+  # Get unique ports from running opencode processes
+  local active_ports
+  active_ports=$(ps -ef | grep "opencode serve" | grep -v grep | grep -o "\-\-port [0-9]*" | awk '{print $2}' | sort -u)
+  
+  if [[ -z "$active_ports" ]]; then
     echo -e "  ${YELLOW}No active instances found.${NC}"
+    echo ""
+    return 1
   fi
+
+  for port in $active_ports; do
+    # Find PIDs for this port
+    local pids
+    pids=$(ps -ef | grep "opencode serve" | grep -v grep | grep "\-\-port $port" | awk '{print $2}' | tr '\n' ' ')
+    
+    # Try to find the token from .env files
+    local token="Unknown"
+    local token_masked="Not found"
+    local env_file
+    env_file=$(find "$HOME" -name ".env" -maxdepth 3 2>/dev/null | xargs grep -l "OPENCODE_API_URL=http://127.0.0.1:$port" 2>/dev/null | head -1)
+    
+    if [[ -f "$env_file" ]]; then
+      token=$(grep "TELEGRAM_BOT_TOKEN=" "$env_file" | cut -d= -f2)
+      token_masked="${token:0:4}...${token: -4}"
+    fi
+
+    # Check if a monitor script is also running for this port
+    local monitor_pid
+    monitor_pid=$(ps -ef | grep "keep-alive-server.sh" | grep -v grep | grep -v "ps -ef" | while read -r mline; do
+      mpid=$(echo "$mline" | awk '{print $2}')
+      # Verify if this monitor belongs to this port's directory
+      mcmd=$(echo "$mline" | awk '{$1=$2=$3=$4=$5=$6=$7=""; print $0}')
+      if [[ "$mcmd" == *"-telegram-bot-$port"* ]]; then
+        echo "$mpid"
+      fi
+    done | head -1)
+
+    echo -ne "  ${BLUE}Port: $port${NC} | PIDs: $pids"
+    [[ -n "$monitor_pid" ]] && echo -ne " (Monitor: $monitor_pid)"
+    echo -e " | Bot: $token_masked"
+  done
   echo ""
-  return $found
+  return 0
 }
 
 if ps -ef | grep "opencode serve" | grep -v grep >/dev/null; then
   list_active_instances
   echo -e "${BOLD}What would you like to do?${NC}"
   echo -e "  [A] Add new instance"
-  echo -e "  [R] Replace/Restart existing (will kill current)"
+  echo -e "  [R] Replace/Restart existing (kill all on port)"
   echo -e "  [S] Stop an instance"
   echo -e "  [Q] Quit"
   echo -ne "${CYAN}  Select an option: ${NC}"
@@ -75,14 +93,23 @@ if ps -ef | grep "opencode serve" | grep -v grep >/dev/null; then
     [Rr]* ) 
       echo -ne "${CYAN}  Enter port to replace: ${NC}"
       read -r target_port
-      pkill -f "opencode serve --port $target_port"
-      pkill -f "bun run start" # Note: might kill others, but usually one bot per user
+      echo -e "${YELLOW}  Cleaning up processes on port $target_port...${NC}"
+      # Kill the monitor scripts first to prevent auto-restart
+      ps -ef | grep "keep-alive" | grep "$target_port" | awk '{print $2}' | xargs kill -9 2>/dev/null
+      # Kill the actual processes
+      pkill -9 -f "opencode serve --port $target_port"
+      pkill -9 -f "bun run start" # This might be aggressive if multiple bots exist
+      # More specific cleanup for the bot on this port
+      ps -ef | grep "bun run start" | grep "$target_port" | awk '{print $2}' | xargs kill -9 2>/dev/null
       PORT=$target_port
       ;;
     [Ss]* )
       echo -ne "${CYAN}  Enter port to stop: ${NC}"
       read -r target_port
-      pkill -f "opencode serve --port $target_port"
+      echo -e "${YELLOW}  Stopping all processes for port $target_port...${NC}"
+      ps -ef | grep "keep-alive" | grep "$target_port" | awk '{print $2}' | xargs kill -9 2>/dev/null
+      pkill -9 -f "opencode serve --port $target_port"
+      ps -ef | grep "bun run start" | grep "$target_port" | awk '{print $2}' | xargs kill -9 2>/dev/null
       echo -e "${GREEN}  Stopped.${NC}"
       exit 0
       ;;
@@ -94,8 +121,19 @@ else
 fi
 
 if [ -z "$BOT_TOKEN" ]; then
-  # Check if we can find a token in existing .env
-  EXISTING_TOKEN=$(find "$HOME" -name ".env" -maxdepth 3 2>/dev/null | xargs grep "TELEGRAM_BOT_TOKEN=" 2>/dev/null | head -1 | cut -d= -f2)
+  # Check if we can find a token in existing .env based on PORT
+  if [ -n "$PORT" ]; then
+    POTENTIAL_ENV=$(find "$HOME" -name ".env" -maxdepth 3 2>/dev/null | xargs grep -l "OPENCODE_API_URL=http://127.0.0.1:$PORT" 2>/dev/null | head -1)
+    if [ -f "$POTENTIAL_ENV" ]; then
+       EXISTING_TOKEN=$(grep "TELEGRAM_BOT_TOKEN=" "$POTENTIAL_ENV" | cut -d= -f2)
+    fi
+  fi
+  
+  if [ -z "$EXISTING_TOKEN" ]; then
+     # Fallback to any token
+     EXISTING_TOKEN=$(find "$HOME" -name ".env" -maxdepth 3 2>/dev/null | xargs grep "TELEGRAM_BOT_TOKEN=" 2>/dev/null | head -1 | cut -d= -f2)
+  fi
+
   if [ -n "$EXISTING_TOKEN" ]; then
     warn "Found existing token: ${EXISTING_TOKEN:0:4}...${EXISTING_TOKEN: -4}"
     echo -ne "${CYAN}  Press Enter to reuse, or type new Token: ${NC}"
@@ -301,9 +339,13 @@ if [ "$OS" = "Darwin" ]; then
   info "  To keep the bot running even when the lid is closed,"
   info "  use the 'caffeinate' command. This script will try to"
   info "  activate it in the background."
-  # We'll use caffeinate -dis which prevents idle sleep, system sleep, and display sleep
-  nohup caffeinate -dis >/dev/null 2>&1 &
-  substep "Caffeinate activated (PID $!)"
+  # Check if already running to avoid duplication
+  if ! pgrep caffeinate >/dev/null; then
+    nohup caffeinate -dis >/dev/null 2>&1 &
+    substep "Caffeinate activated (PID $!)"
+  else
+    substep "Caffeinate already running."
+  fi
 fi
 
 # --- Start OpenCode & Bot (Auto-Reconnect) ---
@@ -370,14 +412,17 @@ else
   create_keep_alive_script "server" "$HOME/.opencode/bin/opencode serve --port $PORT" "$INSTALL_DIR/opencode-server.log"
   create_keep_alive_script "bot" "cd $INSTALL_DIR && bun run start" "$INSTALL_DIR/telegram-bot.log"
   
+  # Ensure no old monitors are running for this port
+  ps -ef | grep "keep-alive" | grep "$PORT" | awk '{print $2}' | xargs kill -9 2>/dev/null
+  
   nohup "$INSTALL_DIR/keep-alive-server.sh" >/dev/null 2>&1 &
   server_pid=$!
   nohup "$INSTALL_DIR/keep-alive-bot.sh" >/dev/null 2>&1 &
   bot_pid=$!
   
   success "  Started in background with auto-reconnect (port $PORT)."
-  substep "Server PID: $server_pid"
-  substep "Bot PID: $bot_pid"
+  substep "Server Monitor PID: $server_pid"
+  substep "Bot Monitor PID: $bot_pid"
 fi
 
 # --- Done ---
