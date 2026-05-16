@@ -24,6 +24,21 @@ OS="$(uname -s)"
 ARCH="$(uname -m)"
 
 is_root() { [ "$EUID" -eq 0 ]; }
+run_root_cmd() {
+  if is_root; then "$@"
+  else sudo "$@"
+  fi
+}
+can_use_systemd() {
+  [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1 && { is_root || command -v sudo >/dev/null 2>&1; }
+}
+install_systemd_unit() {
+  local unit_name=$1
+  local unit_file="/tmp/$unit_name.$$"
+  cat > "$unit_file"
+  run_root_cmd install -m 644 "$unit_file" "/etc/systemd/system/$unit_name" || error "Failed to install $unit_name. Check sudo permissions."
+  rm -f "$unit_file"
+}
 
 trap 'echo -e "\n  ${RED}Setup interrupted.${NC}"; exit 1' INT TERM
 
@@ -280,7 +295,18 @@ if [ -z "$CHAT_ID" ]; then
     sleep 3
   done
 fi
-success "  Chat ID: ${CHAT_ID:-00000000}"
+if [ -n "$CHAT_ID" ]; then
+  success "  Chat ID: $CHAT_ID"
+else
+  warn "  No message detected."
+  echo -ne "${CYAN}  Enter your Telegram user ID manually: ${NC}"
+  read -r CHAT_ID
+  [ -z "$CHAT_ID" ] && error "Telegram user ID is required."
+fi
+
+case "$CHAT_ID" in
+  ''|*[!0-9]*|0) error "Telegram user ID must be a positive integer." ;;
+esac
 
 # --- Environment File ---
 step "Creating environment configuration"
@@ -293,6 +319,7 @@ OPENCODE_MODEL_PROVIDER=opencode
 OPENCODE_MODEL_ID=big-pickle
 LOG_LEVEL=info
 EOF
+chmod 600 "$INSTALL_DIR/.env" || error "Could not secure $INSTALL_DIR/.env"
 ok
 
 # --- macOS Sleep Prevention ---
@@ -331,40 +358,42 @@ EOF
 }
 
 step "Starting Services"
-if is_root && [ "$OS" = "Linux" ]; then
-  # Systemd logic (omitted for brevity, assume similar to before but with $PORT)
-  # ... (I'll keep the systemd logic I wrote earlier)
-  cat > /etc/systemd/system/opencode-server-$PORT.service <<UNIT
+if can_use_systemd; then
+  SERVICE_USER="$(id -un)"
+  SERVICE_HOME="$HOME"
+  install_systemd_unit "opencode-server-$PORT.service" <<UNIT
 [Unit]
 Description=OpenCode Server ($PORT)
 After=network.target
 [Service]
 Type=simple
-User=root
+User=$SERVICE_USER
+Environment=HOME=$SERVICE_HOME
 ExecStart=$HOME/.opencode/bin/opencode serve --port $PORT
 Restart=always
 RestartSec=5
 [Install]
 WantedBy=multi-user.target
 UNIT
-  cat > /etc/systemd/system/opencode-telegram-$PORT.service <<UNIT
+  install_systemd_unit "opencode-telegram-$PORT.service" <<UNIT
 [Unit]
 Description=OpenCode Telegram Bot ($PORT)
 After=network.target opencode-server-$PORT.service
 Wants=opencode-server-$PORT.service
 [Service]
 Type=simple
-User=root
+User=$SERVICE_USER
 WorkingDirectory=$INSTALL_DIR
+Environment=HOME=$SERVICE_HOME
 ExecStart=$HOME/.bun/bin/bun run start
 Restart=always
 RestartSec=10
 [Install]
 WantedBy=multi-user.target
 UNIT
-  systemctl daemon-reload
-  systemctl enable opencode-server-$PORT opencode-telegram-$PORT
-  systemctl restart opencode-server-$PORT opencode-telegram-$PORT
+  run_root_cmd systemctl daemon-reload || error "systemctl daemon-reload failed."
+  run_root_cmd systemctl enable opencode-server-$PORT opencode-telegram-$PORT || error "Failed to enable OpenCode services."
+  run_root_cmd systemctl restart opencode-server-$PORT opencode-telegram-$PORT || error "Failed to start OpenCode services. Run: journalctl -u opencode-telegram-$PORT -n 100"
   success "  Started via systemd."
 else
   create_keep_alive_script "server" "$HOME/.opencode/bin/opencode serve --port $PORT" "$INSTALL_DIR/opencode-server.log"
@@ -379,6 +408,12 @@ echo -e "\n${BOLD}${GREEN}============================================${NC}"
 echo -e "${BOLD}${GREEN}              SETUP COMPLETE!               ${NC}"
 echo -e "${BOLD}${GREEN}============================================${NC}"
 echo -e "  ${CYAN}OpenCode${NC} : http://127.0.0.1:$PORT"
-echo -e "  ${CYAN}Logs${NC}     : tail -f $INSTALL_DIR/telegram-bot.log"
+if can_use_systemd; then
+  echo -e "  ${CYAN}Status${NC}   : systemctl status opencode-telegram-$PORT"
+  echo -e "  ${CYAN}Logs${NC}     : journalctl -u opencode-telegram-$PORT -f"
+  echo -e "  ${CYAN}Stop${NC}     : systemctl stop opencode-server-$PORT opencode-telegram-$PORT"
+else
+  echo -e "  ${CYAN}Logs${NC}     : tail -f $INSTALL_DIR/telegram-bot.log"
+fi
 [[ "$OS" == "Darwin" ]] && echo -e "  ${YELLOW}Tip${NC}      : Use 'killall caffeinate' to allow your Mac to sleep normally again."
 echo ""

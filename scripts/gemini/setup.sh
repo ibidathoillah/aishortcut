@@ -20,8 +20,34 @@ fail()    { echo -e "  ${RED}FAIL${NC}"; exit 1; }
 
 BOT_TOKEN="${1:-}"
 CHAT_ID="${2:-}"
+OS="$(uname -s)"
 
 is_root() { [ "$EUID" -eq 0 ]; }
+run_root_cmd() {
+  if is_root; then "$@"
+  else sudo "$@"
+  fi
+}
+can_use_systemd() {
+  [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1 && { is_root || command -v sudo >/dev/null 2>&1; }
+}
+install_systemd_unit() {
+  local unit_name=$1
+  local unit_file="/tmp/$unit_name.$$"
+  cat > "$unit_file"
+  run_root_cmd install -m 644 "$unit_file" "/etc/systemd/system/$unit_name" || error "Failed to install $unit_name. Check sudo permissions."
+  rm -f "$unit_file"
+}
+npm_global_install() {
+  npm install -g "$@" || {
+    if ! is_root && command -v sudo >/dev/null 2>&1; then
+      warn "npm global install failed. Retrying with sudo..."
+      sudo npm install -g "$@"
+    else
+      return 1
+    fi
+  }
+}
 
 trap 'echo -e "\n  ${RED}Setup interrupted.${NC}"; exit 1' INT TERM
 
@@ -122,7 +148,7 @@ if command -v gemini-cli-telegram >/dev/null 2>&1; then
   success "  $(gemini-cli-telegram --version 2>/dev/null || echo 'ready')"
 else
   substep "Installing globally via npm..."
-  npm install -g gemini-cli-telegram --legacy-peer-deps || error "npm install failed."
+  npm_global_install gemini-cli-telegram --legacy-peer-deps || error "npm install failed."
   command -v gemini-cli-telegram >/dev/null 2>&1 || error "Installation failed."
   success "  Installed: $(gemini-cli-telegram --version 2>/dev/null || echo 'ready')"
 fi
@@ -149,9 +175,15 @@ fi
 if [ -n "$CHAT_ID" ]; then
   success "  Chat ID: $CHAT_ID"
 else
-  warn "  No message detected. You can whitelist your ID later."
-  CHAT_ID="0"
+  warn "  No message detected."
+  echo -ne "${CYAN}  Enter your Telegram user ID manually: ${NC}"
+  read -r CHAT_ID
+  [ -z "$CHAT_ID" ] && error "Telegram user ID is required."
 fi
+
+case "$CHAT_ID" in
+  ''|*[!0-9]*|0) error "Telegram user ID must be a positive integer." ;;
+esac
 
 substep "Writing config to $CONFIG_FILE"
 mkdir -p "$CONFIG_DIR"
@@ -162,6 +194,7 @@ cat > "$CONFIG_FILE" <<EOF
   "model": "gemini-2.5-pro"
 }
 EOF
+chmod 600 "$CONFIG_FILE" || error "Could not secure $CONFIG_FILE"
 ok
 
 # --- Google Authentication ---
@@ -188,21 +221,24 @@ if command -v gemini-cli-telegram >/dev/null 2>&1; then
 fi
 ok
 
-# --- Systemd Service (root) or nohup (user) ---
+# --- Systemd Service or daemon fallback ---
 NODE_PATH=$(command -v node)
 CLI_PATH=$(command -v gemini-cli-telegram)
 
 step "Starting the bot"
-if is_root; then
+if can_use_systemd; then
   substep "Creating systemd service..."
-  cat > /etc/systemd/system/gemini-telegram.service <<UNIT
+  SERVICE_USER="$(id -un)"
+  SERVICE_HOME="$HOME"
+  install_systemd_unit "gemini-telegram.service" <<UNIT
 [Unit]
 Description=Gemini CLI Telegram Bot
 After=network.target
 
 [Service]
 Type=simple
-User=root
+User=$SERVICE_USER
+Environment=HOME=$SERVICE_HOME
 ExecStart=$NODE_PATH $CLI_PATH start --live
 Restart=always
 RestartSec=10
@@ -210,9 +246,9 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 UNIT
-  systemctl daemon-reload
-  systemctl enable gemini-telegram
-  systemctl restart gemini-telegram
+  run_root_cmd systemctl daemon-reload || error "systemctl daemon-reload failed."
+  run_root_cmd systemctl enable gemini-telegram || error "Failed to enable gemini-telegram."
+  run_root_cmd systemctl restart gemini-telegram || error "Failed to start gemini-telegram. Run: journalctl -u gemini-telegram -n 100"
   success "  Started via systemd."
 else
   substep "Starting in background..."
@@ -225,9 +261,10 @@ fi
 echo -e "\n${BOLD}${GREEN}============================================${NC}"
 echo -e "${BOLD}${GREEN}              SETUP COMPLETE!               ${NC}"
 echo -e "${BOLD}${GREEN}============================================${NC}"
-if is_root; then
+if can_use_systemd; then
   echo -e "  ${CYAN}Status${NC} : systemctl status gemini-telegram"
   echo -e "  ${CYAN}Logs${NC}   : journalctl -u gemini-telegram -f"
+  echo -e "  ${CYAN}Stop${NC}   : systemctl stop gemini-telegram"
 else
   echo -e "  ${CYAN}Status${NC} : gemini-cli-telegram status"
   echo -e "  ${CYAN}Logs${NC}   : gemini-cli-telegram logs"
