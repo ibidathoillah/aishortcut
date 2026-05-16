@@ -296,6 +296,9 @@ chmod +x "$MANAGE_SCRIPT"
 step "Starting Codex Telegram"
 if can_use_systemd; then
   NODE_PATH=$(command -v node)
+  CODEX_PATH=$(command -v codex)
+  NODE_BIN_DIR=$(dirname "$NODE_PATH")
+  CODEX_BIN_DIR=$(dirname "$CODEX_PATH")
   SERVICE_USER="$(id -un)"
   SERVICE_HOME="$HOME"
   install_systemd_unit "codex-telegram.service" <<UNIT
@@ -309,6 +312,7 @@ User=$SERVICE_USER
 WorkingDirectory=$WORKSPACE_DIR
 Environment=NODE_ENV=production
 Environment=HOME=$SERVICE_HOME
+Environment=PATH=$NODE_BIN_DIR:$CODEX_BIN_DIR:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=$NODE_PATH $INSTALL_DIR/dist/index.js
 Restart=always
 RestartSec=10
