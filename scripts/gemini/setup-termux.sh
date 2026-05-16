@@ -120,9 +120,15 @@ fi
 if [ -n "$CHAT_ID" ]; then
   success "  Chat ID: $CHAT_ID"
 else
-  warn "  No message detected. You can whitelist your ID later."
-  CHAT_ID="0"
+  warn "  No message detected."
+  echo -ne "${CYAN}  Enter your Telegram user ID manually: ${NC}"
+  read -r CHAT_ID
+  [ -z "$CHAT_ID" ] && error "Telegram user ID is required."
 fi
+
+case "$CHAT_ID" in
+  ''|*[!0-9]*|0) error "Telegram user ID must be a positive integer." ;;
+esac
 
 substep "Writing config to $CONFIG_FILE"
 mkdir -p "$CONFIG_DIR"
@@ -133,6 +139,7 @@ cat > "$CONFIG_FILE" <<EOF
   "model": "gemini-2.5-pro"
 }
 EOF
+chmod 600 "$CONFIG_FILE" || error "Could not secure $CONFIG_FILE"
 ok
 
 # --- Google Authentication ---

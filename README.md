@@ -4,6 +4,33 @@ One-command deploy scripts to run AI coding assistants via Telegram.
 
 - **OpenCode** AI server + Telegram bot frontend
 - **Gemini CLI** + Telegram bot frontend (Linux & Termux/Android)
+- **Codex CLI** + Telegram bot frontend
+
+---
+
+## Codex CLI + Telegram
+
+Deploys a Telegram bridge for the [OpenAI Codex CLI](https://github.com/openai/codex).
+
+```bash
+bash <(curl -sfL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main/setup-codex-telegram.sh)
+```
+
+| Argument | Description |
+| :--- | :--- |
+| `BOT_TOKEN` | Telegram bot token from @BotFather |
+| `CHAT_ID` | Your Telegram user ID (auto-detected) |
+| `WORKSPACE_DIR` | Workspace directory for Codex sessions (defaults to `~/codex-workspace`) |
+| `CODEX_API_KEY` | Optional Codex/OpenAI API key; otherwise use `codex login` or Telegram `/login` |
+
+**Source:** [`scripts/codex/setup.sh`](scripts/codex/setup.sh)
+
+### Management
+
+| Mode | Status | Logs | Stop |
+| :--- | :--- | :--- | :--- |
+| Linux (systemd, root/sudo) | `systemctl status codex-telegram` | `journalctl -u codex-telegram -f` | `systemctl stop codex-telegram` |
+| Fallback (daemon) | `~/.codex-telegram-manage.sh status` | `~/.codex-telegram-manage.sh logs` | `~/.codex-telegram-manage.sh stop` |
 
 ---
 
@@ -27,8 +54,8 @@ bash <(curl -sfL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main
 
 | Mode | Status | Logs | Stop |
 | :--- | :--- | :--- | :--- |
-| Root (systemd) | `systemctl status opencode-telegram` | `journalctl -u opencode-telegram -f` | `systemctl stop opencode-telegram` |
-| User (nohup) | `pgrep -f "bun run start"` | `tail -f ~/opencode-telegram-bot/telegram-bot.log` | `pkill -f "bun run start"` |
+| Linux (systemd, root/sudo) | `systemctl status opencode-telegram-$PORT` | `journalctl -u opencode-telegram-$PORT -f` | `systemctl stop opencode-server-$PORT opencode-telegram-$PORT` |
+| Fallback (nohup) | `pgrep -f "bun run start"` | `tail -f ~/opencode-telegram-bot-$PORT/telegram-bot.log` | `pkill -f "bun run start"` |
 
 ---
 
@@ -51,8 +78,8 @@ bash <(curl -sfL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main
 
 | Mode | Status | Logs | Stop |
 | :--- | :--- | :--- | :--- |
-| Root (systemd) | `systemctl status gemini-telegram` | `journalctl -u gemini-telegram -f` | `systemctl stop gemini-telegram` |
-| User (daemon) | `gemini-cli-telegram status` | `gemini-cli-telegram logs` | `gemini-cli-telegram stop` |
+| Linux (systemd, root/sudo) | `systemctl status gemini-telegram` | `journalctl -u gemini-telegram -f` | `systemctl stop gemini-telegram` |
+| Fallback (daemon) | `gemini-cli-telegram status` | `gemini-cli-telegram logs` | `gemini-cli-telegram stop` |
 
 ---
 
@@ -110,7 +137,7 @@ Reference: [atamshkai/Phantom-Process-Killer](https://github.com/atamshkai/Phant
 All installers follow the same pattern:
 
 1. Install prerequisites (curl, git, tar, etc.)
-2. Install the AI runtime (OpenCode binary, or Gemini CLI via npm)
+2. Install the AI runtime (OpenCode binary, Gemini CLI, or Codex CLI via npm)
 3. Install & configure the Telegram bot
 4. Set up process management (systemd, nohup, or built-in daemon)
 5. Start both services
@@ -126,7 +153,10 @@ aishortcut/
 ├── setup-opencode-telegram.sh      # root forwarder → scripts/opencode/setup.sh
 ├── setup-gemini-telegram.sh        # root forwarder → scripts/gemini/setup.sh
 ├── setup-gemini-telegram-termux.sh # root forwarder → scripts/gemini/setup-termux.sh
+├── setup-codex-telegram.sh         # root forwarder → scripts/codex/setup.sh
 ├── scripts/
+│   ├── codex/
+│   │   └── setup.sh                # Codex + Telegram installer
 │   ├── opencode/
 │   │   └── setup.sh                # OpenCode + Telegram installer
 │   └── gemini/
@@ -147,4 +177,5 @@ chmod +x setup-*.sh scripts/*/setup*.sh
 ./scripts/opencode/setup.sh       # OpenCode + Telegram
 ./scripts/gemini/setup.sh         # Gemini + Telegram (Linux)
 ./scripts/gemini/setup-termux.sh  # Gemini + Telegram (Termux)
+./scripts/codex/setup.sh          # Codex + Telegram
 ```

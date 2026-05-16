@@ -78,6 +78,22 @@
     <p class="subtitle">Deploy an AI-powered Telegram bot in one command</p>
 
     <div class="card">
+      <h2>Codex CLI + Telegram</h2>
+      <pre><code>bash &lt;(curl -sfL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main/setup-codex-telegram.sh)</code></pre>
+      <p style="margin-top:0.5rem;color:#8b949e;">
+        Deploys a Telegram bridge for <a href="https://github.com/openai/codex" style="color:#58a6ff;">OpenAI Codex CLI</a>.
+        <br><span style="color:#484f58;font-size:0.85rem;">Source: <code>scripts/codex/setup.sh</code></span>
+      </p>
+      <table>
+        <tr><th>Arg</th><th>Description</th></tr>
+        <tr><td><code>BOT_TOKEN</code></td><td>Telegram token from @BotFather</td></tr>
+        <tr><td><code>CHAT_ID</code></td><td>Your Telegram user ID (auto-detected)</td></tr>
+        <tr><td><code>WORKSPACE_DIR</code></td><td>Workspace directory (defaults to <code>~/codex-workspace</code>)</td></tr>
+        <tr><td><code>CODEX_API_KEY</code></td><td>Optional API key; otherwise use <code>codex login</code> or <code>/login</code></td></tr>
+      </table>
+    </div>
+
+    <div class="card">
       <h2>OpenCode + Telegram</h2>
       <pre><code>bash &lt;(curl -sfL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main/setup-opencode-telegram.sh)</code></pre>
       <p style="margin-top:0.5rem;color:#8b949e;">
@@ -134,7 +150,7 @@
       <p>All installers follow the same pattern:</p>
       <ol style="padding-left:1.25rem;margin-top:0.5rem;">
         <li>Install prerequisites (curl, git, tar, etc.)</li>
-        <li>Install the AI runtime (OpenCode binary, or Gemini CLI via npm)</li>
+        <li>Install the AI runtime (OpenCode binary, Gemini CLI, or Codex CLI via npm)</li>
         <li>Install &amp; configure the Telegram bot</li>
         <li>Set up process management (systemd, nohup, or built-in daemon)</li>
         <li>Start both services</li>
@@ -150,7 +166,10 @@
 ├── setup-opencode-telegram.sh       # forwarder
 ├── setup-gemini-telegram.sh         # forwarder
 ├── setup-gemini-telegram-termux.sh  # forwarder
+├── setup-codex-telegram.sh          # forwarder
 ├── scripts/
+│   ├── codex/
+│   │   └── setup.sh
 │   ├── opencode/
 │   │   └── setup.sh
 │   └── gemini/
@@ -167,25 +186,37 @@
       <table>
         <tr><th>Installer</th><th>Status</th><th>Logs</th><th>Stop</th></tr>
         <tr>
-          <td>OpenCode (root)</td>
-          <td><code>systemctl status opencode-telegram</code></td>
-          <td><code>journalctl -u opencode-telegram -f</code></td>
-          <td><code>systemctl stop opencode-telegram</code></td>
+          <td>Codex (systemd)</td>
+          <td><code>systemctl status codex-telegram</code></td>
+          <td><code>journalctl -u codex-telegram -f</code></td>
+          <td><code>systemctl stop codex-telegram</code></td>
         </tr>
         <tr>
-          <td>OpenCode (user)</td>
+          <td>Codex (fallback)</td>
+          <td><code>~/.codex-telegram-manage.sh status</code></td>
+          <td><code>~/.codex-telegram-manage.sh logs</code></td>
+          <td><code>~/.codex-telegram-manage.sh stop</code></td>
+        </tr>
+        <tr>
+          <td>OpenCode (systemd)</td>
+          <td><code>systemctl status opencode-telegram-$PORT</code></td>
+          <td><code>journalctl -u opencode-telegram-$PORT -f</code></td>
+          <td><code>systemctl stop opencode-server-$PORT opencode-telegram-$PORT</code></td>
+        </tr>
+        <tr>
+          <td>OpenCode (fallback)</td>
           <td><code>pgrep -f "bun run start"</code></td>
-          <td><code>tail -f ~/opencode-telegram-bot/telegram-bot.log</code></td>
+          <td><code>tail -f ~/opencode-telegram-bot-$PORT/telegram-bot.log</code></td>
           <td><code>pkill -f "bun run start"</code></td>
         </tr>
         <tr>
-          <td>Gemini (root)</td>
+          <td>Gemini (systemd)</td>
           <td><code>systemctl status gemini-telegram</code></td>
           <td><code>journalctl -u gemini-telegram -f</code></td>
           <td><code>systemctl stop gemini-telegram</code></td>
         </tr>
         <tr>
-          <td>Gemini (user)</td>
+          <td>Gemini (fallback)</td>
           <td><code>gemini-cli-telegram status</code></td>
           <td><code>gemini-cli-telegram logs</code></td>
           <td><code>gemini-cli-telegram stop</code></td>
@@ -204,7 +235,8 @@ cd aishortcut
 chmod +x setup-*.sh scripts/*/setup*.sh
 ./scripts/opencode/setup.sh
 ./scripts/gemini/setup.sh
-./scripts/gemini/setup-termux.sh</code></pre>
+./scripts/gemini/setup-termux.sh
+./scripts/codex/setup.sh</code></pre>
     </div>
 
     <a href="https://github.com/ibidathoillah/aishortcut" class="btn">View on GitHub</a>
