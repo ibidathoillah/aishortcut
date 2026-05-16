@@ -305,6 +305,7 @@ if can_use_systemd; then
 [Unit]
 Description=Codex Telegram Bot
 After=network.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
