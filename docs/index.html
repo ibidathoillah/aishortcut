@@ -78,6 +78,24 @@
     <p class="subtitle">Deploy an AI-powered Telegram bot in one command</p>
 
     <div class="card">
+      <h2>Claude Code + Telegram</h2>
+      <pre><code>bash &lt;(curl -sfL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main/setup-claude-telegram.sh)</code></pre>
+      <p style="margin-top:0.5rem;color:#8b949e;">
+        Deploys <a href="https://github.com/RichardAtCT/claude-code-telegram" style="color:#58a6ff;">RichardAtCT/claude-code-telegram</a>
+        with the official <a href="https://docs.anthropic.com/en/docs/claude-code/setup" style="color:#58a6ff;">Claude Code CLI</a>.
+        <br><span style="color:#484f58;font-size:0.85rem;">Source: <code>scripts/claude/setup.sh</code></span>
+      </p>
+      <table>
+        <tr><th>Arg</th><th>Description</th></tr>
+        <tr><td><code>BOT_TOKEN</code></td><td>Telegram token from @BotFather</td></tr>
+        <tr><td><code>CHAT_ID</code></td><td>Your Telegram user ID (auto-detected)</td></tr>
+        <tr><td><code>APPROVED_DIRECTORY</code></td><td>Base directory Claude may access (defaults to <code>~</code>)</td></tr>
+        <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Optional API key; otherwise authenticate with <code>claude auth login</code></td></tr>
+        <tr><td><code>BOT_USERNAME</code></td><td>Optional Telegram bot username; auto-detected when possible</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
       <h2>Codex CLI + Telegram</h2>
       <pre><code>bash &lt;(curl -sfL https://raw.githubusercontent.com/ibidathoillah/aishortcut/main/setup-codex-telegram.sh)</code></pre>
       <p style="margin-top:0.5rem;color:#8b949e;">
@@ -150,7 +168,7 @@
       <p>All installers follow the same pattern:</p>
       <ol style="padding-left:1.25rem;margin-top:0.5rem;">
         <li>Install prerequisites (curl, git, tar, etc.)</li>
-        <li>Install the AI runtime (OpenCode binary, Gemini CLI, or Codex CLI via npm)</li>
+        <li>Install the AI runtime (Claude Code, OpenCode, Gemini CLI, or Codex CLI)</li>
         <li>Install &amp; configure the Telegram bot</li>
         <li>Set up process management (systemd, nohup, or built-in daemon)</li>
         <li>Start both services</li>
@@ -163,11 +181,14 @@
     <div class="card">
       <h2>Project Structure</h2>
       <pre><code>aishortcut/
+├── setup-claude-telegram.sh       # forwarder
 ├── setup-opencode-telegram.sh       # forwarder
 ├── setup-gemini-telegram.sh         # forwarder
 ├── setup-gemini-telegram-termux.sh  # forwarder
 ├── setup-codex-telegram.sh          # forwarder
 ├── scripts/
+│   ├── claude/
+│   │   └── setup.sh
 │   ├── codex/
 │   │   └── setup.sh
 │   ├── opencode/
@@ -185,6 +206,18 @@
       <h2>Management Commands</h2>
       <table>
         <tr><th>Installer</th><th>Status</th><th>Logs</th><th>Stop</th></tr>
+        <tr>
+          <td>Claude (systemd)</td>
+          <td><code>systemctl status claude-telegram</code></td>
+          <td><code>journalctl -u claude-telegram -f</code></td>
+          <td><code>systemctl stop claude-telegram</code></td>
+        </tr>
+        <tr>
+          <td>Claude (fallback)</td>
+          <td><code>~/.claude-telegram-manage.sh status</code></td>
+          <td><code>~/.claude-telegram-manage.sh logs</code></td>
+          <td><code>~/.claude-telegram-manage.sh stop</code></td>
+        </tr>
         <tr>
           <td>Codex (systemd)</td>
           <td><code>systemctl status codex-telegram</code></td>
